@@ -128,9 +128,10 @@ GIGACHAT_CREDENTIALS=... GIGACHAT_SCOPE=GIGACHAT_API_PERS \
 GIGACHAT_CA_BUNDLE_FILE=russian_trusted_root_ca.pem GPT2GIGA_DISABLE_REASONING=True gpt2giga
 ```
 
-- `GPT2GIGA_DISABLE_REASONING=True` is needed: GigaChat-2-Max answers 500 to a request with
-  both tools and `reasoning_effort`, and Ouroboros sends both. So the profiles differ in
-  context only.
+- `GPT2GIGA_DISABLE_REASONING=True` is needed: GigaChat-2-Max and GigaChat-3-Ultra answer 500
+  to a request with both tools and `reasoning_effort`, and Ouroboros sends both (3-Ultra takes
+  no `reasoning_effort` at all; of the models tried only 3-Lightning does). So the profiles
+  differ in context only.
 - Set `OUROBOROS_MODEL_FALLBACKS` to a GigaChat model too, or a failed call falls back to
   Ouroboros's default fallback on OpenRouter.
 - Input tokens come out too low on cache hits: GigaChat counts cached tokens apart from
