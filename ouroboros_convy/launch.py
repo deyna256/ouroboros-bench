@@ -15,6 +15,7 @@ key, such as OPENROUTER_API_KEY. `--stub` serves a scripted local model instead:
 """
 
 import argparse
+import fcntl
 import json
 import os
 import pathlib
@@ -40,26 +41,23 @@ COMMON = {
 SERVERS = pathlib.Path(__file__).resolve().parent.parent / ".servers"
 
 
-def alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    return True
-
-
 def sweep() -> None:
-    """Remove what launches killed with SIGKILL left behind: their folders, and the server
-    processes still running inside them, found by working directory.
+    """Remove what launches killed with SIGKILL left behind: each launch holds a lock on its
+    folder while it lives, so a folder whose lock is free is a dead launch's. Server processes
+    still running inside it, found by working directory, are killed first; in the sandbox there
+    are none, since its namespace dies with the launch.
     ponytail: /proc is Linux only; elsewhere a killed launch's server needs a manual kill."""
     for folder in SERVERS.glob("server-*"):
         try:
-            if alive(int(folder.name.split("-")[1])):
-                continue
-        except (IndexError, ValueError):
-            continue
+            lock = os.open(folder / "lock", os.O_RDWR)
+        except OSError:
+            continue  # a launch that has not taken its lock yet
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            continue  # its launch is alive
+        finally:
+            os.close(lock)
         for proc in pathlib.Path("/proc").glob("[0-9]*"):
             try:
                 if pathlib.Path(os.readlink(proc / "cwd")).is_relative_to(folder):
@@ -88,7 +86,9 @@ def main() -> None:
         signal.signal(sig, lambda *_: sys.exit(1))
     SERVERS.mkdir(exist_ok=True)
     sweep()
-    root = pathlib.Path(tempfile.mkdtemp(prefix=f"server-{os.getpid()}-", dir=SERVERS))
+    root = pathlib.Path(tempfile.mkdtemp(prefix="server-", dir=SERVERS))
+    lock = os.open(root / "lock", os.O_RDWR | os.O_CREAT)
+    fcntl.flock(lock, fcntl.LOCK_EX)  # held until this process ends, however it ends
     stub = None
     try:
         clone, data = root / "clone", root / "data"

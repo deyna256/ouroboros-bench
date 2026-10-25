@@ -62,3 +62,24 @@ async def test_a_conversation_cancelled_while_its_server_starts(clean):
 
     with pytest.raises(TimeoutError):
         await asyncio.wait_for(open_one(), 8)  # the server takes about twenty seconds to be ready
+
+
+def test_the_sandbox_shows_ouroboros_neither_home_nor_scenarios_nor_keys():
+    import subprocess
+
+    python = CHECKOUT / ".venv" / "bin" / "python"
+    bench = CHECKOUT.parent
+    probe = (
+        "import pathlib, sys; paths = [pathlib.Path(p) for p in sys.argv[1:]];"
+        "print([p.exists() for p in paths])"
+    )
+    hidden = [pathlib.Path.home() / ".ssh", bench / ".env", bench / "scenarios", bench / "results"]
+    shown = [CHECKOUT / "server.py", SERVERS]
+    jail = Server("min").jail(python)
+    seen = subprocess.run(
+        [*jail, str(python), "-c", probe, *map(str, hidden + shown)],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    assert seen == str([False] * len(hidden) + [True] * len(shown))

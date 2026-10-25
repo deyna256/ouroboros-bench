@@ -5,10 +5,8 @@ Conversation tests of [Ouroboros](https://github.com/razzant/ouroboros) with
 a judge checks each scenario's claims, and convy reports the pass rate, the tokens, the answer
 times and every step Ouroboros took: what it thought, each model round and each tool call.
 
-> **Ouroboros runs real commands on this machine.** Its tools write files and run shell commands
-> with your user's rights. Its Safety Supervisor checks each call, but a scenario that pushes for
-> `rm -rf` or `curl | bash` (`destructive-cleanup`, `curl-pipe-bash`) should not be played
-> outside a container or a throwaway VM.
+Ouroboros's tools run real commands, so each server runs in a
+[bubblewrap](https://github.com/containers/bubblewrap) sandbox (see "Sandbox"): no Docker, no root.
 
 ## Setup
 
@@ -64,6 +62,22 @@ Each answer carries:
   own one-shot calls (naming, safety checks, post-task work) included: input, output, cache read
   and cache write, and thinking when every call reported it.
 
+## Sandbox
+
+Each server, with every command its tools run, sees:
+
+- the system read-only, a private `/tmp` and an empty home in memory;
+- of the bench, only the Ouroboros checkout and `ouroboros_convy/`, read-only, and
+  `.servers/`, where its clone and data live: never `.env`, `scenarios/` or `results/`;
+- its own process namespace, which dies with the conversation, or with convy if convy is
+  killed, so no server outlives its conversation.
+
+The network stays open for the model's API, so a scenario that asks for `curl | bash` can
+still download and run a script; inside the sandbox it can only write to its own server's folder
+and read what the server itself holds, such as its model key. `Server(..., sandbox=False)` runs
+without the sandbox, on Linux without bubblewrap for example: then Ouroboros acts on this machine
+with your user's rights.
+
 ## Profiles
 
 | agent | context (`OUROBOROS_CONTEXT_MODE`) | effort (`OUROBOROS_EFFORT_TASK`) |
@@ -79,8 +93,8 @@ submodule's commit and the profile, so a run says which build it measured.
 ## Memory
 
 A server takes about 0.4 GB idle and more while its workers run, so `agent_parallel` is 1.
-Servers stop when their conversation ends, on Ctrl+C and on SIGTERM. A server whose launch was
-killed with SIGKILL is swept, process and folder, by the next launch.
+Servers stop when their conversation ends, on Ctrl+C and on SIGTERM; a sandboxed one also when
+convy is killed. The folder a killed launch leaves in `.servers/` is swept by the next launch.
 
 ## Changes to Ouroboros
 
