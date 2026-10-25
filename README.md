@@ -125,21 +125,27 @@ sandbox, which shares the machine's network and reaches it at `localhost:8090`.
 ```sh
 uv tool install gpt2giga
 GIGACHAT_CREDENTIALS=... GIGACHAT_SCOPE=GIGACHAT_API_PERS \
-GIGACHAT_CA_BUNDLE_FILE=russian_trusted_root_ca.pem GPT2GIGA_DISABLE_REASONING=True gpt2giga
+GIGACHAT_CA_BUNDLE_FILE=russian_trusted_root_ca.pem GIGACHAT_TIMEOUT=300 \
+GPT2GIGA_DISABLE_REASONING=True gpt2giga
 ```
 
-- `GPT2GIGA_DISABLE_REASONING=True` is needed: GigaChat-2-Max and GigaChat-3-Ultra answer 500
-  to a request with both tools and `reasoning_effort`, and Ouroboros sends both (3-Ultra takes
-  no `reasoning_effort` at all; of the models tried only 3-Lightning does). So the profiles
-  differ in context only.
+Checked against GigaChat's API directly, with its own SDK, and its
+[documentation](https://developers.sber.ru/docs/ru/gigachat/guides/counting-tokens):
+
+- `GPT2GIGA_DISABLE_REASONING=True` is needed. Ouroboros sends tools and `reasoning_effort`
+  together; GigaChat-2-Max answers that with 500, and GigaChat-3-Ultra writes its tool calls as
+  text inside its reasoning instead of calling them. Without tools both models reason. So the
+  profiles differ in context only.
+- `GIGACHAT_TIMEOUT=300`: the SDK's default of 30 seconds cuts GigaChat-3-Ultra off, and the
+  proxy reports that as a 500.
 - Set `OUROBOROS_MODEL_FALLBACKS` to a GigaChat model too, or a failed call falls back to
   Ouroboros's default fallback on OpenRouter.
-- Input tokens come out too low on cache hits: GigaChat counts cached tokens apart from
-  `prompt_tokens`, and gpt2giga passes both on unchanged, where OpenAI's API includes them.
-  convy then shows the uncached part as the input and the cache as not reported. Its
-  `reasoning_tokens` is always 0, so thinking shows as 0 rather than not reported.
-- GigaChat takes one tool call per reply, so a turn calls tools one at a time; a personal key
-  is rate-limited, and GigaChat reports no prices, so `OUROBOROS_BUDGET_USD` limits nothing.
+- Input tokens read low on cache hits. GigaChat's `prompt_tokens` excludes the cached tokens it
+  reports as `precached_prompt_tokens`, and gpt2giga passes both on unchanged, where OpenAI's
+  API counts the cached tokens in the input. convy then shows the uncached part as the input
+  and the cache as not reported. gpt2giga also reports `reasoning_tokens` as 0 always.
+- A personal key is rate-limited, and GigaChat reports no prices, so `OUROBOROS_BUDGET_USD`
+  limits nothing.
 
 ## Memory
 
