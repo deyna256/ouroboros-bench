@@ -1,0 +1,331 @@
+[
+ {
+  "type": "chat",
+  "role": "user",
+  "content": "What is 6 times 7? Check the files first.",
+  "ts": "2026-10-25T17:19:17.966546+00:00",
+  "source": "web",
+  "chat_id": 1,
+  "attachments": [],
+  "sender_session_id": "",
+  "client_message_id": "997ffaf9d8374db880c9ed3774f67cf8",
+  "ingress_accepted": true,
+  "ingress_dispatched": true,
+  "row_address": "row:1@2026-10-25T17:19:17.966546+00:00#5438cbdb999c"
+ },
+ {
+  "type": "log",
+  "data": {
+   "ts": "2026-10-25T17:19:18.184270+00:00",
+   "type": "worker_boot"
+  },
+  "chat_id": 0
+ },
+ {
+  "type": "log",
+  "data": {
+   "ts": "2026-10-25T17:19:18.200875+00:00",
+   "type": "task_received",
+   "task_id": "18bb3252"
+  },
+  "chat_id": 1
+ },
+ {
+  "type": "log",
+  "data": {
+   "ts": "2026-10-25T17:19:18.199568+00:00",
+   "type": "task_started",
+   "task_id": "18bb3252"
+  },
+  "chat_id": 1
+ },
+ {
+  "type": "log",
+  "data": {
+   "ts": "2026-10-25T17:19:18.202274+00:00",
+   "type": "context_building_started",
+   "task_id": "18bb3252"
+  },
+  "chat_id": 1
+ },
+ {
+  "type": "log",
+  "data": {
+   "ts": "2026-10-25T17:19:19.115258+00:00",
+   "type": "context_memory_view",
+   "task_id": "18bb3252"
+  },
+  "chat_id": 1
+ },
+ {
+  "type": "log",
+  "data": {
+   "ts": "2026-10-25T17:19:19.116560+00:00",
+   "type": "context_building_finished",
+   "task_id": "18bb3252"
+  },
+  "chat_id": 1
+ },
+ {
+  "type": "log",
+  "data": {
+   "ts": "2026-10-25T17:19:19.210796+00:00",
+   "type": "llm_round_started",
+   "task_id": "18bb3252"
+  },
+  "chat_id": 1
+ },
+ {
+  "type": "log",
+  "data": {
+   "ts": "2026-10-25T17:19:22.752143+00:00",
+   "type": "send_message",
+   "task_id": "18bb3252"
+  },
+  "chat_id": 1
+ },
+ {
+  "type": "chat",
+  "role": "assistant",
+  "content": "💬 still working",
+  "markdown": true,
+  "is_progress": true,
+  "ts": "2026-10-25T17:19:22.752143+00:00",
+  "task_id": "18bb3252",
+  "chat_id": 1,
+  "transport": {},
+  "system_type": "model_narration",
+  "narration": true,
+  "_is_direct_chat": true,
+  "cancelable": true,
+  "row_address": "row:1@2026-10-25T17:19:22.752143+00:00#f2572595461c"
+ },
+ {
+  "type": "log",
+  "data": {
+   "ts": "2026-10-25T17:19:22.053404+00:00",
+   "type": "llm_usage",
+   "task_id": "18bb3252",
+   "root_task_id": "18bb3252"
+  },
+  "chat_id": 1
+ },
+ {
+  "type": "log",
+  "data": {
+   "ts": "2026-10-25T17:19:22.053851+00:00",
+   "type": "llm_round_finished",
+   "task_id": "18bb3252"
+  },
+  "chat_id": 1
+ },
+ {
+  "type": "log",
+  "data": {
+   "ts": "2026-10-25T17:19:22.771493+00:00",
+   "type": "tool_call_started",
+   "task_id": "18bb3252",
+   "tool": "list_files"
+  },
+  "chat_id": 1
+ },
+ {
+  "type": "log",
+  "data": {
+   "ts": "2026-10-25T17:19:22.797764+00:00",
+   "type": "tool_call",
+   "tool": "list_files",
+   "task_id": "18bb3252",
+   "status": "ok"
+  },
+  "chat_id": 1
+ },
+ {
+  "type": "log",
+  "data": {
+   "ts": "2026-10-25T17:19:22.801398+00:00",
+   "type": "tool_call_finished",
+   "task_id": "18bb3252",
+   "tool": "list_files",
+   "status": "ok"
+  },
+  "chat_id": 1
+ },
+ {
+  "type": "log",
+  "data": {
+   "ts": "2026-10-25T17:19:22.909639+00:00",
+   "type": "llm_round_started",
+   "task_id": "18bb3252"
+  },
+  "chat_id": 1
+ },
+ {
+  "type": "log",
+  "data": {
+   "ts": "2026-10-25T17:19:24.087628+00:00",
+   "type": "acceptance_source_ack",
+   "task_id": "18bb3252"
+  },
+  "chat_id": 1
+ },
+ {
+  "type": "log",
+  "data": {
+   "ts": "2026-10-25T17:19:24.126132+00:00",
+   "type": "task_eval",
+   "task_id": "18bb3252"
+  },
+  "chat_id": 1
+ },
+ {
+  "type": "log",
+  "data": {
+   "type": "task_finalization_timing",
+   "ts": "2026-10-25T17:19:24.922760+00:00",
+   "task_id": "18bb3252"
+  },
+  "chat_id": 1
+ },
+ {
+  "type": "log",
+  "data": {
+   "type": "task_cost_finalized",
+   "ts": "2026-10-25T17:19:24.970056+00:00",
+   "task_id": "18bb3252",
+   "root_task_id": "18bb3252"
+  },
+  "chat_id": 1
+ },
+ {
+  "type": "chat",
+  "role": "assistant",
+  "content": "Here is my answer: 42.",
+  "markdown": true,
+  "is_progress": false,
+  "ts": "2026-10-25T17:19:24.122948+00:00",
+  "task_id": "18bb3252",
+  "chat_id": 1,
+  "transport": {},
+  "model_execution": {
+   "requested_model": "openai-compatible::mock-model",
+   "requested_use_local": false,
+   "used_model": "openai-compatible::mock-model",
+   "reported_model": "openai-compatible/mock-model",
+   "used_local": false,
+   "provider": "openai-compatible",
+   "llm_call_id": "llm_45d521f42f894454a14ee3667ba83854",
+   "last_llm_error_kind": null,
+   "source": "usable_solve_response"
+  },
+  "origin_message_ref": {
+   "chat_id": 1,
+   "client_message_id": "997ffaf9d8374db880c9ed3774f67cf8",
+   "ts": "2026-10-25T17:19:17.966546+00:00",
+   "text_sha256": "ba5c7d0bba4e75b54db5b84cfc9c9d0b5072613d16949f9c0c9484fb6e6c2e36"
+  },
+  "outcome_axes": {
+   "schema_version": 1,
+   "lifecycle": {
+    "status": "completed"
+   },
+   "execution": {
+    "status": "ok",
+    "reason_code": "final_message",
+    "failure": null,
+    "recoveries": [],
+    "cosmetic_tool_errors": [],
+    "ignored_tool_errors": [],
+    "policy_denials": [],
+    "unresolved_tool_errors": []
+   },
+   "artifacts": {
+    "status": "not_applicable"
+   },
+   "objective": {
+    "status": "not_evaluated",
+    "source": "none",
+    "review_status": "skipped"
+   },
+   "review": {
+    "status": "skipped",
+    "trigger": "not_evaluated",
+    "eligibility": "not_eligible",
+    "run_count": 0
+   }
+  },
+  "reason_code": "final_message",
+  "task_phase": "finalizing",
+  "task_terminal_status": "completed",
+  "delivery_id": "final:18bb3252:fc260c2b84b1827c",
+  "narration": false,
+  "reply_to": {
+   "address": "row:1@2026-10-25T17:19:17.966546+00:00#5438cbdb999c",
+   "chat_id": 1,
+   "role": "user",
+   "author_label": "You",
+   "kind": "message",
+   "snippet": "What is 6 times 7? Check the files first.",
+   "ts": "2026-10-25T17:19:17.966546+00:00",
+   "task_id": ""
+  },
+  "root_task_id": "18bb3252",
+  "row_address": "row:1@2026-10-25T17:19:24.122948+00:00#7824db9d0cca"
+ },
+ {
+  "type": "log",
+  "data": {
+   "type": "task_finalization_timing",
+   "ts": "2026-10-25T17:19:25.400771+00:00",
+   "task_id": "18bb3252"
+  },
+  "chat_id": 0
+ },
+ {
+  "type": "log",
+  "data": {
+   "ts": "2026-10-25T17:19:24.126603+00:00",
+   "type": "task_metrics_event",
+   "task_id": "18bb3252"
+  },
+  "chat_id": 1
+ },
+ {
+  "type": "log",
+  "data": {
+   "ts": "2026-10-25T17:19:24.924314+00:00",
+   "type": "task_done",
+   "task_id": "18bb3252",
+   "root_task_id": "18bb3252",
+   "status": "completed"
+  },
+  "chat_id": 1
+ },
+ {
+  "type": "log",
+  "data": {
+   "ts": "2026-10-25T17:19:24.067863+00:00",
+   "type": "llm_usage",
+   "task_id": "18bb3252",
+   "root_task_id": "18bb3252"
+  },
+  "chat_id": 1
+ },
+ {
+  "type": "log",
+  "data": {
+   "ts": "2026-10-25T17:19:24.068253+00:00",
+   "type": "llm_round_finished",
+   "task_id": "18bb3252"
+  },
+  "chat_id": 1
+ },
+ {
+  "type": "log",
+  "data": {
+   "ts": "2026-10-25T17:19:40.006810+00:00",
+   "type": "supervisor_load"
+  },
+  "chat_id": 0
+ }
+]

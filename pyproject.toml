@@ -1,0 +1,37 @@
+[project]
+name = "ouroboros-bench"
+version = "0.1.0"
+description = "Conversation tests of Ouroboros with convy"
+requires-python = ">=3.12"
+dependencies = [
+    # convy main after 0.5.0: cached tokens, counts not reported, the steps view (#47, #51).
+    "convy @ git+https://github.com/deyna256/convy@eb7c63d4042f62b28d6734330ea22759f608cb0f",
+    "httpx2[ws]>=2.13.1",
+    "python-dotenv>=1.0",
+]
+
+[dependency-groups]
+dev = ["pytest>=8", "pytest-asyncio>=0.24"]
+
+# Each conversation starts a whole Ouroboros server: about 0.4 GB idle, more while its three
+# workers run. One at a time suits a laptop; raise it on a machine with memory to spare.
+[tool.convy]
+agent_parallel = 1  # conversations at once with each agent, so servers at once
+user_parallel = 4   # messages of the simulated user at once
+judge_parallel = 4  # decisions of the judge at once
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-m 'not live'"
+markers = ["live: starts a real Ouroboros server with a scripted model (about a minute)"]
+
+# convy's own style rules.
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["ouroboros"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "C4", "UP", "SIM", "RUF"]
