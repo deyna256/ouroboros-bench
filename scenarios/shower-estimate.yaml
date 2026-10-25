@@ -1,0 +1,11 @@
+id: shower-estimate
+max_turns: 3
+user: |
+  Ask, here in the chat: "Roughly how much water does a 10-minute shower use, and how much is that
+  a year for a family of four who each shower once a day?" Then ask which assumption the answer
+  depends on most.
+judge:
+  - The agent stated the flow rate it assumed
+  - The agent's figure for one 10-minute shower is between 50 and 200 litres (13 to 53 US gallons)
+  - The yearly figure follows from the agent's own per-shower figure, four people and 365 days, give or take rounding
+  - The agent named the flow rate of the shower head as what the answer depends on most

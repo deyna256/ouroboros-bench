@@ -126,8 +126,8 @@ def main() -> None:
             # environment, so the bundle travels in them.
             if bundle := os.environ.get("OUROBOROS_EXTRA_CA_BUNDLE"):
                 overrides["OUROBOROS_EXTRA_CA_BUNDLE"] = bundle
+            overrides["TOTAL_BUDGET"] = float(os.environ.get("OUROBOROS_BUDGET_USD", 10))
             settings = build_isolated_settings(dict(os.environ), **overrides)
-            settings.setdefault("TOTAL_BUDGET", float(os.environ.get("OUROBOROS_BUDGET_USD", 10)))
         path = data / "settings.json"
         path.write_text(json.dumps(settings, ensure_ascii=False, indent=2), encoding="utf-8")
         seed_owner_state(data)

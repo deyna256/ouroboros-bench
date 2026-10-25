@@ -9,14 +9,13 @@ import msgspec
 import pytest
 from convy import AgentFailure
 
-from ouroboros_convy.agent import FRAMES, Frame, Turn
+from ouroboros_convy.agent import Frame, Turn
 
 RECORDED = [
     msgspec.convert(frame, Frame)
     for frame in json.loads(
         (pathlib.Path(__file__).parent / "fixtures" / "turn_frames.json").read_text()
     )
-    if frame["type"] in FRAMES
 ]
 MESSAGE = "997ffaf9d8374db880c9ed3774f67cf8"
 

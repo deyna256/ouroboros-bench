@@ -66,7 +66,6 @@ class Narration(Struct, frozen=True, kw_only=True, tag_field="type", tag="send_m
 
 
 Row = Round | ToolStart | ToolEnd | Narration
-KINDS = frozenset(("llm_round", "tool_call_started", "tool_call", "send_message"))
 
 
 class Ledger(Struct, frozen=True):

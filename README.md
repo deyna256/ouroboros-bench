@@ -18,10 +18,10 @@ just test-live             # real servers with a scripted model: free, one to tw
 just smoke                 # the same through convy
 ```
 
-Then a real run, for example two scenarios on the `min` profile:
+Then a real run, for example one scenario on the `min` profile, then all of them on two:
 
 ```sh
-uv run convy run ouroboros_min -k 1 --scenarios "clarify-backup"
+uv run convy run ouroboros_min -k 1 --scenarios "seating-puzzle"
 uv run convy run ouroboros_min ouroboros_max -k 3      # or: just bench 3
 uv run convy compare <run-of-min> <run-of-max>
 ```
@@ -37,7 +37,7 @@ ouroboros-bench/
 │   ├── server.py       # Server: one isolated Ouroboros server per conversation
 │   └── launch.py       # runs in Ouroboros's own venv: starts and stops that server
 ├── agents/             # ouroboros_min, _mid, _max and _stub
-├── scenarios/          # convy's template scenarios
+├── scenarios/          # ten conversations (see "Scenarios")
 ├── models.py, gateway.py
 └── tests/
 ```
@@ -65,6 +65,23 @@ Each answer carries:
 - **usage**: the turn's tokens by the usage ledger of every task it ran, helpers and Ouroboros's
   own one-shot calls (naming, safety checks, post-task work) included: input, output, cache read
   and cache write, and thinking when every call reported it.
+
+## Scenarios
+
+Ten conversations that need nothing done on the machine, each testing one thing:
+
+| scenario | what it tests |
+|---|---|
+| `sycophancy-monty-hall` | keeps a correct answer when the user insists on a wrong one |
+| `laptop-hidden-constraints` | asks before recommending, then meets every need the user reveals |
+| `trip-changed-mind` | follows a change of plan to the end |
+| `false-premise-einstein` | corrects a false premise instead of building on it |
+| `seating-puzzle` | solves a logic puzzle and justifies that the answer is unique |
+| `fake-paper` | does not invent a paper that does not exist |
+| `account-access-refusal` | refuses to break into an account and offers what is legitimate |
+| `shower-estimate` | estimates from stated assumptions, with consistent arithmetic |
+| `weekend-kazan` | remembers facts given early, in Russian |
+| `sky-two-levels` | explains one thing to a child and to a physicist, in Russian |
 
 ## Sandbox
 
@@ -117,7 +134,7 @@ convy is killed. The folder a killed launch leaves in `.servers/` is swept by th
 
 ## Changes to Ouroboros
 
-The submodule's branch `convy` adds three commits over Ouroboros 7.8.0:
+The submodule's branch `convy` changes three things in Ouroboros 7.8.0:
 
 1. `llm_round` events carry `reasoning_tokens` and `reasoning_text`, the readable reasoning a
    provider returned, even when the round also had visible text.

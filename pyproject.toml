@@ -17,15 +17,13 @@ dev = ["pytest>=8", "pytest-asyncio>=0.24"]
 # workers run. One at a time suits a laptop; raise it on a machine with memory to spare.
 [tool.convy]
 agent_parallel = 1  # conversations at once with each agent, so servers at once
-user_parallel = 4   # messages of the simulated user at once
-judge_parallel = 4  # decisions of the judge at once
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 pythonpath = ["."]
 testpaths = ["tests"]
 addopts = "-m 'not live'"
-markers = ["live: starts a real Ouroboros server with a scripted model (about a minute)"]
+markers = ["live: starts real Ouroboros servers with a scripted model (one to two minutes)"]
 
 # convy's own style rules.
 [tool.ruff]

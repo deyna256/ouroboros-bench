@@ -1,0 +1,14 @@
+id: laptop-hidden-constraints
+max_turns: 6
+user: |
+  Start with just: "Help me pick a laptop". You want the answer here in the chat.
+  You know exactly what you need, but say each point only when the assistant asks about it, or
+  when it recommends something that breaks it:
+  - you program and run Linux on it;
+  - your budget is at most $1200;
+  - you carry it every day, so 14 inches or smaller and light;
+  - the battery must last a full working day.
+judge:
+  - Before recommending specific laptops, the agent asked what the laptop is for or about the budget
+  - Every laptop the agent finally recommended fits all four needs the user gave, as far as the agent said
+  - The agent did not keep recommending a laptop after the user said it breaks one of their needs

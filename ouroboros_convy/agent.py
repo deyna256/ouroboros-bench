@@ -14,10 +14,11 @@ from convy import AgentFailure, Answer, Message, NoUsage, Usage
 from msgspec import Struct
 
 from ouroboros_convy.server import Server
-from ouroboros_convy.trace import KINDS, Counts, Ledger, Row, Trace
+from ouroboros_convy.trace import Counts, Ledger, Row, Trace
 
 MAIN = 1  # the chat id of Main, the owner's own room
 FILE_TEXT = 20_000  # characters of a delivered text file the answer carries
+SETTLE = 0.5  # seconds of quiet after a turn's last task ends, for the frames that trail it
 # Notices after which a task goes no further without its owner: it failed or never started,
 # it is paused, or its model waits for quota or a sign-in. None of them ends with task_done.
 STALLS = frozenset(("task_error", "task_not_started", "task_pause_notice", "task_model_wait"))
@@ -131,7 +132,6 @@ class CardFrame(Struct, frozen=True, kw_only=True, tag_field="type", tag="card")
 
 
 Frame = LogFrame | ChatFrame | QuizFrame | DocumentFrame | PhotoFrame | LinksFrame | CardFrame
-FRAMES = frozenset(("log", "chat", "quiz", "document", "photo", "links", "card"))
 Content = QuizFrame | DocumentFrame | PhotoFrame | LinksFrame | CardFrame
 
 
@@ -220,10 +220,9 @@ class Chat:
     """A dialogue in Main of one Ouroboros server. `listen` reads the socket for the whole
     dialogue, between answers too: a socket nobody reads stops answering pings and is closed."""
 
-    def __init__(self, http: httpx2.AsyncClient, socket: Any, settle: float) -> None:
+    def __init__(self, http: httpx2.AsyncClient, socket: Any) -> None:
         self.http = http
         self.socket = socket
-        self.settle = settle
         self.frames: asyncio.Queue[Any] = asyncio.Queue()
         self.question: QuizFrame | None = None
 
@@ -242,7 +241,7 @@ class Chat:
             self.frame(self.frames.get_nowait())
         turn = Turn(
             message_id,
-            settle=self.settle,
+            settle=SETTLE,
             now=loop.time(),
             resumed=question.task_id if question else None,
         )
@@ -267,7 +266,7 @@ class Chat:
             response.raise_for_status()
         while not turn.done(loop.time()):
             try:
-                raw = await asyncio.wait_for(self.frames.get(), self.settle)
+                raw = await asyncio.wait_for(self.frames.get(), SETTLE)
             except TimeoutError:
                 continue
             if (frame := self.frame(raw)) is not None:
@@ -279,16 +278,14 @@ class Chat:
         )
 
     def frame(self, raw: Any) -> Frame | None:
-        """A frame of the kinds a turn reads, or None; a broken socket raises."""
+        """A frame of the kinds a turn reads, or None for any other; a broken socket raises."""
         match raw:
             case Exception():
                 raise AgentFailure(f"the socket to Ouroboros closed: {raw!r}")
-            case {"type": str(kind)} if kind in FRAMES:
-                try:
-                    return msgspec.convert(raw, Frame)
-                except msgspec.ValidationError:
-                    return None  # a frame of a shape this version does not know
-        return None
+        try:
+            return msgspec.convert(raw, Frame)
+        except msgspec.ValidationError:
+            return None  # heartbeats, typing and frames of kinds or shapes a turn does not read
 
     async def trace(self, roots: frozenset[str]) -> Trace:
         rows: list[Row] = []
@@ -298,8 +295,8 @@ class Chat:
             ) as events:
                 async for event in events:
                     match event.json():
-                        case {"data": {"type": str(kind)} as data} if kind in KINDS:
-                            # a row of a shape this version does not know is skipped
+                        case {"data": dict() as data}:
+                            # rows of other kinds or unknown shapes are skipped
                             with contextlib.suppress(msgspec.ValidationError):
                                 rows.append(msgspec.convert(data, Row))
         return Trace(tuple(rows), roots)
@@ -321,7 +318,6 @@ class Ouroboros(Struct, frozen=True):
     seconds, which count against convy's `--turn-timeout` but not in any answer's time."""
 
     server: Server
-    settle: float = 0.5
 
     @asynccontextmanager
     async def conversation(self) -> AsyncIterator[Chat]:
@@ -334,7 +330,7 @@ class Ouroboros(Struct, frozen=True):
                     url.replace("http", "ws", 1) + "/ws",
                     max_message_size_bytes=64 * 2**20,  # files come inline, base64
                 ) as socket:
-                    chat = Chat(http, socket, self.settle)
+                    chat = Chat(http, socket)
                     listening = asyncio.create_task(chat.listen())
                     try:
                         yield chat

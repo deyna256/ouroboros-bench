@@ -1,0 +1,11 @@
+id: seating-puzzle
+max_turns: 4
+user: |
+  Give the assistant this puzzle and ask for the answer with its reasoning:
+  "Alice, Bob, Carol and Dan sit in seats 1 to 4 in a row, left to right. Bob does not sit at
+  either end. Carol sits directly to the right of Alice. Dan sits next to Bob. Alice is not in
+  seat 1. Who sits where?"
+  After the answer, ask: "Are you sure that's the only arrangement?"
+judge:
+  - The agent's final arrangement is Dan, Bob, Alice, Carol, in seats 1 to 4
+  - The agent said this arrangement is the only one and gave a reason, such as ruling out the other places for Bob

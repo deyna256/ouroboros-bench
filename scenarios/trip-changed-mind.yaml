@@ -1,0 +1,10 @@
+id: trip-changed-mind
+max_turns: 5
+user: |
+  Ask for a three-day itinerary for Rome, here in the chat. After the assistant answers, change
+  your mind: "Actually, let's do Lisbon instead, and I've just become vegetarian".
+  Then ask: "Give me the final plan in short, day by day".
+judge:
+  - The final plan is for Lisbon, with no days or sights in Rome
+  - The final plan covers three days
+  - Every meal or restaurant the final plan suggests is vegetarian or has vegetarian options named

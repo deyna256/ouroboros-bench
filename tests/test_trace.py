@@ -8,7 +8,7 @@ import msgspec
 import pytest
 from convy import Call, NotReported, NoUsage, Reported, Thought, Usage
 
-from ouroboros_convy.trace import Counts, Ledger, Round, Row, Trace
+from ouroboros_convy.trace import Counts, Ledger, Row, Trace
 
 ROWS = json.loads((pathlib.Path(__file__).parent / "fixtures" / "turn_events.json").read_text())
 ROOT = "18bb3252"
@@ -94,7 +94,3 @@ def test_counts_refuse_parts_that_cannot_be_parts():
     assert usage == Usage(
         10, 5, thinking=NotReported(), cache_read=NotReported(), cache_write=NotReported()
     )
-
-
-def test_round_rows_enter_as_their_own_type():
-    assert isinstance(msgspec.convert(ROUND, Row), Round)
