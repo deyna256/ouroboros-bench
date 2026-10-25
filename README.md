@@ -124,12 +124,21 @@ sandbox, which shares the machine's network and reaches it at `localhost:8090`.
 
 ```sh
 uv tool install gpt2giga
-GIGACHAT_CREDENTIALS=... GIGACHAT_SCOPE=GIGACHAT_API_PERS gpt2giga
+GIGACHAT_CREDENTIALS=... GIGACHAT_SCOPE=GIGACHAT_API_PERS \
+GIGACHAT_CA_BUNDLE_FILE=russian_trusted_root_ca.pem GPT2GIGA_DISABLE_REASONING=True gpt2giga
 ```
 
-GigaChat takes one tool call per reply, so a turn calls tools one at a time, and reports no
-prices, so `OUROBOROS_BUDGET_USD` limits nothing: watch spending at Sber. The proxy passes
-Ouroboros's reasoning effort on, so the profiles differ in effort as well as context.
+- `GPT2GIGA_DISABLE_REASONING=True` is needed: GigaChat-2-Max answers 500 to a request with
+  both tools and `reasoning_effort`, and Ouroboros sends both. So the profiles differ in
+  context only.
+- Set `OUROBOROS_MODEL_FALLBACKS` to a GigaChat model too, or a failed call falls back to
+  Ouroboros's default fallback on OpenRouter.
+- Input tokens come out too low on cache hits: GigaChat counts cached tokens apart from
+  `prompt_tokens`, and gpt2giga passes both on unchanged, where OpenAI's API includes them.
+  convy then shows the uncached part as the input and the cache as not reported. Its
+  `reasoning_tokens` is always 0, so thinking shows as 0 rather than not reported.
+- GigaChat takes one tool call per reply, so a turn calls tools one at a time; a personal key
+  is rate-limited, and GigaChat reports no prices, so `OUROBOROS_BUDGET_USD` limits nothing.
 
 ## Memory
 
