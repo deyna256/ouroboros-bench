@@ -14,7 +14,7 @@ Ouroboros's tools run real commands, so each server runs in a
 just setup                 # the Ouroboros submodule and both environments
 cp .env.example .env       # convy's models, then Ouroboros's models and key
 just test                  # tests that need no server
-just test-live             # real servers with a scripted model: free, about a minute
+just test-live             # real servers with a scripted model: free, one to two minutes
 just smoke                 # the same through convy
 ```
 
@@ -49,9 +49,13 @@ Each conversation starts its own server (`launch.py`, through Ouroboros's
 root in `.servers/`, so no conversation sees another one's memory, identity or chat. Starting
 takes about twenty seconds; it counts against convy's `--turn-timeout`, not in an answer's time.
 
-A turn is one message in Main over the socket Ouroboros's own interface uses. Its answer is every
-reply Ouroboros writes until each task the message started has ended, work it hands off included.
-When Ouroboros asks a question and waits, the next message answers it.
+A turn is one message in Main over the socket Ouroboros's own interface uses. Its answer is all
+Ouroboros says until each task the message started has ended, work it hands off included: its
+replies, the files it sends (a text file's content up to 20,000 characters), image captions,
+links and cards. What other tasks say, such as a schedule the agent set, is not part of it.
+When Ouroboros asks a question and waits, the next message answers it. A task that fails, does
+not start, is paused or waits for its model's quota fails the turn at once, with the host's
+notice as the reason.
 
 Each answer carries:
 
@@ -69,6 +73,8 @@ Each server, with every command its tools run, sees:
 - the system read-only, a private `/tmp` and an empty home in memory;
 - of the bench, only the Ouroboros checkout and `ouroboros_convy/`, read-only, and
   `.servers/`, where its clone and data live: never `.env`, `scenarios/` or `results/`;
+- of the environment, only Ouroboros's settings and its providers' keys (`OUROBOROS_*`,
+  `OPENROUTER_*`, `GIGACHAT_*` and the like): never convy's gateway key;
 - its own process namespace, which dies with the conversation, or with convy if convy is
   killed, so no server outlives its conversation.
 
@@ -88,19 +94,34 @@ with your user's rights.
 
 All of them run in the `light` runtime mode, so Ouroboros cannot rewrite itself during a run,
 with three workers per server. The models come from `.env`. An agent's `version` is the
-submodule's commit and the profile, so a run says which build it measured.
+submodule's commit, the profile, the models and a hash of `ouroboros_convy/`, so a run says
+which build it measured and `convy resume` refuses to mix two.
+
+## GigaChat
+
+Ouroboros runs on GigaChat with the keys in `.env.example`. Then:
+
+- the profiles differ in context only: Ouroboros sends GigaChat no reasoning effort;
+- `OUROBOROS_BUDGET_USD` limits nothing: GigaChat reports no prices; watch spending at Sber;
+- the Russian root CA must be a file outside your home, which the sandbox hides;
+- a turn runs one tool call at a time: GigaChat takes one call per reply;
+- convy's own user and judge cannot use GigaChat directly, since `gateway.py` speaks plain
+  OpenAI-compatible; keep them on another provider or behind a proxy such as `gpt2giga`.
 
 ## Memory
 
-A server takes about 0.4 GB idle and more while its workers run, so `agent_parallel` is 1.
+A server takes about 0.4 GB idle and more while its workers run, so `agent_parallel` is 1;
+with more, servers start one at a time.
 Servers stop when their conversation ends, on Ctrl+C and on SIGTERM; a sandboxed one also when
 convy is killed. The folder a killed launch leaves in `.servers/` is swept by the next launch.
 
 ## Changes to Ouroboros
 
-The submodule's branch `convy` adds two commits over Ouroboros 7.8.0 so convy sees more:
+The submodule's branch `convy` adds three commits over Ouroboros 7.8.0:
 
 1. `llm_round` events carry `reasoning_tokens` and `reasoning_text`, the readable reasoning a
    provider returned, even when the round also had visible text.
 2. A task's cost fields (`GET /api/tasks/<id>`) carry the ledger's `cached_tokens`,
    `cache_write_tokens` and `reasoning_tokens`.
+3. Parallel tool calls a gateway streams at the same index stay apart instead of merging into
+   one refused call (`read_filerun_command`).

@@ -15,6 +15,7 @@ key, such as OPENROUTER_API_KEY. `--stub` serves a scripted local model instead:
 """
 
 import argparse
+import contextlib
 import fcntl
 import json
 import os
@@ -24,6 +25,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import threading
 
 PROFILES = {
     "min": {"OUROBOROS_CONTEXT_MODE": "nano", "OUROBOROS_EFFORT_TASK": "low"},
@@ -84,13 +86,22 @@ def main() -> None:
 
     for sig in (signal.SIGTERM, signal.SIGHUP):  # run the cleanup below, as Ctrl+C does
         signal.signal(sig, lambda *_: sys.exit(1))
+    # Closed stdin stops the launch at any point, even while its server starts: in the sandbox a
+    # signal from outside reaches bubblewrap, which ends everything without this cleanup.
+    threading.Thread(
+        target=lambda: (sys.stdin.read(), os.kill(os.getpid(), signal.SIGTERM)), daemon=True
+    ).start()
     SERVERS.mkdir(exist_ok=True)
-    sweep()
-    root = pathlib.Path(tempfile.mkdtemp(prefix="server-", dir=SERVERS))
-    lock = os.open(root / "lock", os.O_RDWR | os.O_CREAT)
-    fcntl.flock(lock, fcntl.LOCK_EX)  # held until this process ends, however it ends
-    stub = None
-    try:
+    with contextlib.ExitStack() as cleanup:
+        # One launch starts at a time: a server binds the port it was given seconds later, and
+        # the sweep must not take a folder whose launch has not locked it yet.
+        starting = os.open(SERVERS / "starting.lock", os.O_RDWR | os.O_CREAT)
+        fcntl.flock(starting, fcntl.LOCK_EX)
+        sweep()
+        root = pathlib.Path(tempfile.mkdtemp(prefix="server-", dir=SERVERS))
+        cleanup.callback(shutil.rmtree, root, ignore_errors=True)
+        lock = os.open(root / "lock", os.O_RDWR | os.O_CREAT)
+        fcntl.flock(lock, fcntl.LOCK_EX)  # held until this process ends, however it ends
         clone, data = root / "clone", root / "data"
         data.mkdir()
         for command in (
@@ -103,13 +114,18 @@ def main() -> None:
         if args.stub:
             from tests.system_e2e import harness
 
-            stub = harness.ScriptedStubModel(
-                script=[{"tool": "list_files", "arguments": {"path": "."}}],
-                final_answer="Stub answer.",
+            stub = cleanup.enter_context(
+                harness.ScriptedStubModel(
+                    script=[{"tool": "list_files", "arguments": {"path": "."}}],
+                    final_answer="Stub answer.",
+                )
             )
-            stub.__enter__()
             settings = harness.keyless_settings(stub, **overrides)
         else:
+            # A provider's root CA, such as GigaChat's: the server reads settings, not the
+            # environment, so the bundle travels in them.
+            if bundle := os.environ.get("OUROBOROS_EXTRA_CA_BUNDLE"):
+                overrides["OUROBOROS_EXTRA_CA_BUNDLE"] = bundle
             settings = build_isolated_settings(dict(os.environ), **overrides)
             settings.setdefault("TOTAL_BUDGET", float(os.environ.get("OUROBOROS_BUDGET_USD", 10)))
         path = data / "settings.json"
@@ -118,15 +134,10 @@ def main() -> None:
         (data / state.ISOLATED_BENCHMARK_SENTINEL).write_text("convy\n", encoding="utf-8")
         server = IsolatedServer(clone, data, path, settings_authoritative_env=True)
         server.start(ready_timeout=300)
-        try:
-            print(json.dumps({"url": server.base_url, **server.attestation}), flush=True)
-            sys.stdin.read()
-        finally:
-            server.stop()
-    finally:
-        if stub is not None:
-            stub.__exit__(None, None, None)
-        shutil.rmtree(root, ignore_errors=True)
+        cleanup.callback(server.stop)
+        fcntl.flock(starting, fcntl.LOCK_UN)
+        print(json.dumps({"url": server.base_url}), flush=True)
+        threading.Event().wait()  # until stdin closes or a signal comes
 
 
 if __name__ == "__main__":

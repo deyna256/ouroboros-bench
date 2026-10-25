@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 import msgspec
-from convy import Call, NotReported, Reported, Thought, Usage
+from convy import Call, NotReported, NoUsage, Reported, Thought, Usage
 from msgspec import Struct
 
 NARRATION_MARK = "💬"  # the host's prefix on a narration bubble, not the model's words
@@ -29,11 +29,17 @@ class Round(Struct, frozen=True, kw_only=True, tag_field="type", tag="llm_round"
     reasoning_tokens: int | None = None
     reasoning_text: str | None = None
 
+    @property
+    def thought(self) -> str:
+        """The round's readable reasoning, empty when it had none."""
+        return (self.reasoning_text or "").strip()
+
 
 class ToolStart(Struct, frozen=True, kw_only=True, tag_field="type", tag="tool_call_started"):
     """The host began a tool call, with the arguments the model sent."""
 
     ts: datetime
+    task_id: str
     invocation_id: str = ""
     args: Any = None
 
@@ -80,21 +86,24 @@ class Counts(Struct, frozen=True):
 
     calls: tuple[Round | Ledger, ...]
 
-    def usage(self) -> Usage | None:
-        """The sum as convy's `Usage`, or None when a call did not report its input or output."""
+    def usage(self) -> Usage | NoUsage:
+        """The sum as convy's `Usage`; `NoUsage` when a call did not report its input or output."""
         if not self.calls or any(
             call.prompt_tokens is None or call.completion_tokens is None for call in self.calls
         ):
-            return None
+            return NoUsage()
         total_in = sum(call.prompt_tokens for call in self.calls)
         total_out = sum(call.completion_tokens for call in self.calls)
         thinking = self.part("reasoning_tokens")
         read, written = self.part("cached_tokens"), self.part("cache_write_tokens")
-        if isinstance(thinking, int) and thinking > total_out:
-            thinking = NotReported()  # a provider that counts thinking apart from the output
-        cached = sum(part for part in (read, written) if isinstance(part, int))
-        if cached > total_in:
-            read = written = NotReported()
+        match thinking:
+            case int() if thinking > total_out:  # a provider counting thinking apart
+                thinking = NotReported()
+        match read, written:
+            case int(), int() if read + written > total_in:  # cache counted apart from the input
+                read = written = NotReported()
+            case int(), NotReported() if read > total_in:
+                read = NotReported()
         return Usage(total_in, total_out, thinking=thinking, cache_read=read, cache_write=written)
 
     def part(self, name: str) -> int | NotReported:
@@ -111,68 +120,53 @@ class Trace(Struct, frozen=True):
 
     def steps(self) -> tuple[Thought | Call, ...]:
         """What the agent thought and called, in order of time."""
-        starts = {
-            row.invocation_id: row
-            for row in self.rows
-            if isinstance(row, ToolStart) and row.invocation_id
-        }
-        reasoned = {
-            row.reasoning_text.strip()
-            for row in self.rows
-            if isinstance(row, Round) and row.reasoning_text and row.reasoning_text.strip()
-        }
+        starts: dict[str, ToolStart] = {}
+        reasoned: set[str] = set()
+        for row in self.rows:
+            match row:
+                case ToolStart(invocation_id=str(invocation)) if invocation:
+                    starts[invocation] = row
+                case Round(thought=str(thought)) if thought:
+                    reasoned.add(thought)
         timed: list[tuple[datetime, Thought | Call]] = []
         for row in self.rows:
             match row:
                 case Round():
                     seconds = (row.duration_ms or 0) / 1000
                     started = row.ts - timedelta(seconds=seconds)
-                    if row.reasoning_text and row.reasoning_text.strip():
-                        timed.append((started, Thought(row.reasoning_text.strip())))
-                    usage = Counts((row,)).usage()
-                    timed.append(
-                        (
-                            started,
-                            Call(
-                                name=self.named(f"model {row.model}", row.task_id),
-                                started=started,
-                                seconds=seconds,
-                                **({"usage": usage} if usage else {}),
-                            ),
-                        )
+                    if row.thought:
+                        timed.append((started, Thought(row.thought)))
+                    call = Call(
+                        name=self.named(f"model {row.model}", row.task_id),
+                        started=started,
+                        seconds=seconds,
+                        usage=Counts((row,)).usage(),
                     )
+                    timed.append((started, call))
                 case ToolEnd():
                     seconds = max((row.elapsed_ms or 0) / 1000, 0.0)
                     start = starts.get(row.invocation_id)
                     started = start.ts if start else row.ts - timedelta(seconds=seconds)
                     # A call refused for its arguments settles with none: the start kept them.
                     args = row.args if row.args or start is None else start.args
-                    timed.append(
-                        (
-                            started,
-                            Call(
-                                name=self.named(row.tool, row.task_id),
-                                started=started,
-                                seconds=seconds,
-                                sent=Reported(msgspec.json.encode(args).decode()),
-                                received=Reported(row.result_preview),
-                            ),
-                        )
+                    call = Call(
+                        name=self.named(row.tool, row.task_id),
+                        started=started,
+                        seconds=seconds,
+                        sent=Reported(msgspec.json.encode(args).decode()),
+                        received=Reported(row.result_preview),
                     )
+                    timed.append((started, call))
                 case Narration(narration=True):
                     text = row.text.removeprefix(NARRATION_MARK).strip()
-                    if (
-                        text and text not in reasoned
-                    ):  # a round without words narrates its reasoning
+                    if text and text not in reasoned:  # a wordless round narrates its reasoning
                         timed.append((row.ts, Thought(text)))
-                case _:
-                    pass
         timed.sort(key=lambda pair: pair[0])
         return tuple(step for _, step in timed)
 
     def tasks(self) -> frozenset[str]:
         """Every task with a row here: the roots and the helpers they started."""
-        return self.roots | {row.task_id for row in self.rows if not isinstance(row, ToolStart)}
+        return self.roots | {row.task_id for row in self.rows}
 
     def named(self, name: str, task_id: str) -> str:
         return name if task_id in self.roots else f"{name} (helper {task_id})"

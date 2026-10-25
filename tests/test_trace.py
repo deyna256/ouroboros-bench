@@ -6,7 +6,7 @@ import pathlib
 
 import msgspec
 import pytest
-from convy import Call, NotReported, Reported, Thought, Usage
+from convy import Call, NotReported, NoUsage, Reported, Thought, Usage
 
 from ouroboros_convy.trace import Counts, Ledger, Round, Row, Trace
 
@@ -84,8 +84,8 @@ def test_counts_keep_a_part_unknown_unless_every_one_reported_it():
     silent = Ledger(50, 10)
     assert Counts((known,)).usage() == Usage(100, 20, thinking=5, cache_read=60, cache_write=10)
     assert Counts((known, silent)).usage() == Usage(150, 30)
-    assert Counts((known, Ledger(None, 3))).usage() is None
-    assert Counts(()).usage() is None
+    assert Counts((known, Ledger(None, 3))).usage() == NoUsage()
+    assert Counts(()).usage() == NoUsage()
 
 
 def test_counts_refuse_parts_that_cannot_be_parts():

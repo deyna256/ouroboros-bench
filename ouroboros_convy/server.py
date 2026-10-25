@@ -2,11 +2,13 @@
 
 import asyncio
 import contextlib
+import hashlib
 import json
 import os
 import pathlib
 import shutil
 import subprocess
+import tempfile
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -18,6 +20,14 @@ HERE = pathlib.Path(__file__).resolve().parent
 BENCH = HERE.parent
 CHECKOUT = BENCH / "ouroboros"
 SERVERS = BENCH / ".servers"
+# What a launch may see of `.env` and the environment: Ouroboros's settings and its providers'
+# keys, the families Ouroboros's own server_runner treats as settings, and what a process needs
+# to run. Everything else, convy's gateway key included, stays out of the sandbox.
+OUROBOROS_KEYS = (
+    "OUROBOROS_", "OPENROUTER_", "OPENAI_", "ANTHROPIC_", "MINIMAX_", "DEEPSEEK_", "ZAI_",
+    "CLOUDRU_", "GIGACHAT_", "LOCAL_MODEL_", "USE_LOCAL_",
+)  # fmt: skip
+PROCESS_KEYS = frozenset(("PATH", "HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "LC_CTYPE", "TZ"))
 
 
 class Server(Struct, frozen=True):
@@ -38,7 +48,6 @@ class Server(Struct, frozen=True):
     profile: str
     stub: bool = False
     sandbox: bool = True
-    checkout: pathlib.Path = CHECKOUT
 
     def __post_init__(self) -> None:
         if self.profile not in ("min", "mid", "max"):
@@ -47,42 +56,46 @@ class Server(Struct, frozen=True):
     @asynccontextmanager
     async def started(self) -> AsyncIterator[str]:
         """The server's address while it runs; it stops when the block ends."""
-        python = self.checkout / ".venv" / "bin" / "python"
+        python = CHECKOUT / ".venv" / "bin" / "python"
         if not python.exists():
             raise AgentFailure(f"no Ouroboros environment at {python}: run `just setup`")
         SERVERS.mkdir(exist_ok=True)
-        process = await asyncio.create_subprocess_exec(
-            *self.jail(python),
-            python,
-            str(HERE / "launch.py"),
-            str(self.checkout),
-            self.profile,
-            *(["--stub"] if self.stub else []),
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            env={
-                **{key: value for key, value in dotenv_values(".env").items() if value is not None},
-                **os.environ,
-            },
-        )
-        try:
-            line = await process.stdout.readline()
-            if not line:
-                error = (await process.stderr.read()).decode(errors="replace").strip()
-                raise AgentFailure(f"Ouroboros did not start: {error[-2000:]}")
-            yield json.loads(line)["url"]
-        finally:
-            stopping = asyncio.ensure_future(self.stopped(process))
+        environment = self.environment()
+        with tempfile.TemporaryFile() as errors:  # read only when the launch fails
+            process = await asyncio.create_subprocess_exec(
+                *self.jail(python, environment),
+                python,
+                str(HERE / "launch.py"),
+                str(CHECKOUT),
+                self.profile,
+                *(["--stub"] if self.stub else []),
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=errors,
+                env=environment,
+            )
             try:
-                await asyncio.shield(stopping)
-            except asyncio.CancelledError:
-                await stopping  # a cancelled conversation still stops its server before it ends
-                raise
+                line = await process.stdout.readline()
+                if not line:
+                    await process.wait()
+                    errors.seek(0)
+                    error = errors.read().decode(errors="replace").strip()
+                    raise AgentFailure(f"Ouroboros did not start: {error[-2000:]}")
+                yield json.loads(line)["url"]
+            finally:
+                stopping = asyncio.ensure_future(self.stopped(process))
+                cancelled = False
+                while not stopping.done():  # the server stops however often this is cancelled
+                    try:
+                        await asyncio.shield(stopping)
+                    except asyncio.CancelledError:
+                        cancelled = True
+                if cancelled:
+                    raise asyncio.CancelledError
 
     async def stopped(self, process: asyncio.subprocess.Process) -> None:
         """Stop a launch, gently first: closing stdin stops a server that is up; SIGTERM, one
-        still starting; SIGKILL only a launch that ignored both, whose server the next launch
+        still starting; SIGKILL only a launch that ignored both, whose folder the next launch
         sweeps."""
         if process.returncode is None:
             process.stdin.close()
@@ -94,7 +107,18 @@ class Server(Struct, frozen=True):
             with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(process.wait(), seconds)
 
-    def jail(self, python: pathlib.Path) -> list[str]:
+    def environment(self) -> dict[str, str]:
+        found = {
+            **{key: value for key, value in dotenv_values(".env").items() if value is not None},
+            **os.environ,
+        }
+        return {
+            key: value
+            for key, value in found.items()
+            if key in PROCESS_KEYS or key.startswith(OUROBOROS_KEYS)
+        }
+
+    def jail(self, python: pathlib.Path, environment: dict[str, str]) -> list[str]:
         """The bubblewrap command a sandboxed launch runs under; none without `sandbox`."""
         if not self.sandbox:
             return []
@@ -102,19 +126,24 @@ class Server(Struct, frozen=True):
         if bwrap is None:
             raise AgentFailure("no bubblewrap (bwrap) to sandbox Ouroboros: install it")
         git = subprocess.run(
-            ["git", "-C", str(self.checkout), "rev-parse", "--absolute-git-dir"],
+            ["git", "-C", str(CHECKOUT), "rev-parse", "--absolute-git-dir"],
             check=True,
             capture_output=True,
             text=True,
         ).stdout.strip()
-        shown = (
+        shown = [
             # uv's interpreter store, under the hidden home: the venv names its interpreter
             # through the store's link to the minor version, so the whole store is shown.
             pathlib.Path(os.path.realpath(python)).parent.parent.parent,
-            self.checkout,
+            CHECKOUT,
             pathlib.Path(git),  # a submodule's history lives in the bench's .git/modules
             HERE,
-        )  # not the whole bench: its scenarios, results and .env stay out of the agent's reach
+        ]  # not the whole bench: its scenarios, results and .env stay out of the agent's reach
+        alternates = pathlib.Path(git) / "objects" / "info" / "alternates"
+        if alternates.exists():  # objects borrowed from another clone, as --reference leaves
+            shown += [pathlib.Path(line) for line in alternates.read_text().split() if line]
+        if bundle := environment.get("OUROBOROS_EXTRA_CA_BUNDLE"):
+            shown.append(pathlib.Path(bundle))  # a provider's root CA, such as GigaChat's
         return [
             bwrap,
             *("--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp"),
@@ -125,11 +154,22 @@ class Server(Struct, frozen=True):
         ]
 
     def version(self) -> str:
-        """The checkout's commit and the profile: the build a run measures."""
+        """The build a run measures: the checkout's commit, the profile, the models and this
+        package's code, so `convy resume` refuses to mix two of them in one run."""
         commit = subprocess.run(
-            ["git", "-C", str(self.checkout), "rev-parse", "--short", "HEAD"],
+            ["git", "-C", str(CHECKOUT), "rev-parse", "--short", "HEAD"],
             check=True,
             capture_output=True,
             text=True,
         ).stdout.strip()
-        return f"{commit}-{self.profile}{'-stub' if self.stub else ''}"
+        environment = self.environment()
+        models = (
+            "stub"
+            if self.stub
+            else "+".join(
+                environment.get(key, "default")
+                for key in ("OUROBOROS_MODEL", "OUROBOROS_MODEL_LIGHT")
+            )
+        )
+        code = hashlib.sha256(b"".join(path.read_bytes() for path in sorted(HERE.glob("*.py"))))
+        return f"{commit}-{self.profile}-{models}-{code.hexdigest()[:8]}"

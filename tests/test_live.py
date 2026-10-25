@@ -1,18 +1,17 @@
-"""Real Ouroboros servers with a scripted model: free, about half a minute each.
+"""Real Ouroboros servers with a scripted model: free, about twenty seconds to start each.
 
 uv run pytest -m live
 """
 
 import asyncio
 import pathlib
+import subprocess
 
 import pytest
 from convy import Call, Message, Thought, Usage
 
 from ouroboros_convy import Ouroboros, Server
-from ouroboros_convy.server import CHECKOUT
-
-SERVERS = pathlib.Path(__file__).resolve().parent.parent / ".servers"
+from ouroboros_convy.server import BENCH, CHECKOUT, SERVERS
 
 pytestmark = [
     pytest.mark.live,
@@ -64,22 +63,22 @@ async def test_a_conversation_cancelled_while_its_server_starts(clean):
         await asyncio.wait_for(open_one(), 8)  # the server takes about twenty seconds to be ready
 
 
-def test_the_sandbox_shows_ouroboros_neither_home_nor_scenarios_nor_keys():
-    import subprocess
-
+def test_the_sandbox_shows_ouroboros_neither_home_nor_scenarios_nor_keys(monkeypatch):
+    monkeypatch.setenv("GW_API_KEY", "convy-gateway-key")
+    server = Server("min")
     python = CHECKOUT / ".venv" / "bin" / "python"
-    bench = CHECKOUT.parent
     probe = (
-        "import pathlib, sys; paths = [pathlib.Path(p) for p in sys.argv[1:]];"
-        "print([p.exists() for p in paths])"
+        "import os, pathlib, sys; paths = [pathlib.Path(p) for p in sys.argv[1:]];"
+        "print([p.exists() for p in paths], 'GW_API_KEY' in os.environ)"
     )
-    hidden = [pathlib.Path.home() / ".ssh", bench / ".env", bench / "scenarios", bench / "results"]
+    hidden = [pathlib.Path.home() / ".ssh", BENCH / ".env", BENCH / "scenarios", BENCH / "results"]
     shown = [CHECKOUT / "server.py", SERVERS]
-    jail = Server("min").jail(python)
+    environment = server.environment()
     seen = subprocess.run(
-        [*jail, str(python), "-c", probe, *map(str, hidden + shown)],
+        [*server.jail(python, environment), str(python), "-c", probe, *map(str, hidden + shown)],
         check=True,
         capture_output=True,
         text=True,
+        env=environment,
     ).stdout.strip()
-    assert seen == str([False] * len(hidden) + [True] * len(shown))
+    assert seen == f"{[False] * len(hidden) + [True] * len(shown)} False"

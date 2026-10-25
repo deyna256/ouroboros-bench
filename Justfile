@@ -8,7 +8,7 @@ setup:
 test:
     uv run pytest
 
-# The tests with real Ouroboros servers and a scripted model: free, about a minute.
+# The tests with real Ouroboros servers and a scripted model: free, one to two minutes.
 test-live:
     uv run pytest -m live
 
