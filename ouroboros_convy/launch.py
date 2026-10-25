@@ -122,10 +122,6 @@ def main() -> None:
             )
             settings = harness.keyless_settings(stub, **overrides)
         else:
-            # A provider's root CA, such as GigaChat's: the server reads settings, not the
-            # environment, so the bundle travels in them.
-            if bundle := os.environ.get("OUROBOROS_EXTRA_CA_BUNDLE"):
-                overrides["OUROBOROS_EXTRA_CA_BUNDLE"] = bundle
             overrides["TOTAL_BUDGET"] = float(os.environ.get("OUROBOROS_BUDGET_USD", 10))
             settings = build_isolated_settings(dict(os.environ), **overrides)
         path = data / "settings.json"

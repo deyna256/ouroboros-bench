@@ -63,7 +63,7 @@ class Server(Struct, frozen=True):
         environment = self.environment()
         with tempfile.TemporaryFile() as errors:  # read only when the launch fails
             process = await asyncio.create_subprocess_exec(
-                *self.jail(python, environment),
+                *self.jail(python),
                 python,
                 str(HERE / "launch.py"),
                 str(CHECKOUT),
@@ -118,7 +118,7 @@ class Server(Struct, frozen=True):
             if key in PROCESS_KEYS or key.startswith(OUROBOROS_KEYS)
         }
 
-    def jail(self, python: pathlib.Path, environment: dict[str, str]) -> list[str]:
+    def jail(self, python: pathlib.Path) -> list[str]:
         """The bubblewrap command a sandboxed launch runs under; none without `sandbox`."""
         if not self.sandbox:
             return []
@@ -142,8 +142,6 @@ class Server(Struct, frozen=True):
         alternates = pathlib.Path(git) / "objects" / "info" / "alternates"
         if alternates.exists():  # objects borrowed from another clone, as --reference leaves
             shown += [pathlib.Path(line) for line in alternates.read_text().split() if line]
-        if bundle := environment.get("OUROBOROS_EXTRA_CA_BUNDLE"):
-            shown.append(pathlib.Path(bundle))  # a provider's root CA, such as GigaChat's
         return [
             bwrap,
             *("--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp"),

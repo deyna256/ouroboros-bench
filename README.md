@@ -116,14 +116,20 @@ which build it measured and `convy resume` refuses to mix two.
 
 ## GigaChat
 
-Ouroboros runs on GigaChat with the keys in `.env.example`. Then:
+Run [gpt2giga](https://github.com/ai-forever/gpt2giga) on this machine and point Ouroboros, and
+convy's user and judge if you like, at it as an OpenAI-compatible gateway (`.env.example`): the
+bench needs no GigaChat settings of its own. The proxy keeps the GigaChat key and the Russian
+root CA (`GIGACHAT_CREDENTIALS`, `GIGACHAT_CA_BUNDLE_FILE` in its own configuration), outside the
+sandbox, which shares the machine's network and reaches it at `localhost:8090`.
 
-- the profiles differ in context only: Ouroboros sends GigaChat no reasoning effort;
-- `OUROBOROS_BUDGET_USD` limits nothing: GigaChat reports no prices; watch spending at Sber;
-- the Russian root CA must be a file outside your home, which the sandbox hides;
-- a turn runs one tool call at a time: GigaChat takes one call per reply;
-- convy's own user and judge cannot use GigaChat directly, since `gateway.py` speaks plain
-  OpenAI-compatible; keep them on another provider or behind a proxy such as `gpt2giga`.
+```sh
+uv tool install gpt2giga
+GIGACHAT_CREDENTIALS=... GIGACHAT_SCOPE=GIGACHAT_API_PERS gpt2giga
+```
+
+GigaChat takes one tool call per reply, so a turn calls tools one at a time, and reports no
+prices, so `OUROBOROS_BUDGET_USD` limits nothing: watch spending at Sber. The proxy passes
+Ouroboros's reasoning effort on, so the profiles differ in effort as well as context.
 
 ## Memory
 

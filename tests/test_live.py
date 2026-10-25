@@ -75,7 +75,7 @@ def test_the_sandbox_shows_ouroboros_neither_home_nor_scenarios_nor_keys(monkeyp
     shown = [CHECKOUT / "server.py", SERVERS]
     environment = server.environment()
     seen = subprocess.run(
-        [*server.jail(python, environment), str(python), "-c", probe, *map(str, hidden + shown)],
+        [*server.jail(python), str(python), "-c", probe, *map(str, hidden + shown)],
         check=True,
         capture_output=True,
         text=True,
