@@ -26,7 +26,7 @@ Then a real run, for example one scenario on the `min` profile, then all of them
 
 ```sh
 uv run convy run ouroboros_min -k 1 --scenarios "seating-puzzle"
-uv run convy run ouroboros_min ouroboros_max -k 3      # or: just bench 3
+uv run convy run ouroboros_min ouroboros_max -k 3      # all three profiles: just bench 3
 uv run convy compare <run-of-min> <run-of-max>       # run ids: results/<agent>/
 ```
 
@@ -91,19 +91,21 @@ Ten conversations that need nothing done on the machine, each testing one thing:
 
 Each server, with every command its tools run, sees:
 
-- the system read-only, a private `/tmp` and an empty home in memory, with uv's Pythons;
+- the system read-only; in memory, a private `/tmp`, an empty home (with uv's Pythons) and an
+  empty `/run`, so none of the host's sockets there: Docker's, the session bus, the agents;
 - of the bench, only the Ouroboros checkout and `ouroboros_convy/`, read-only, and
   `.servers/`, where its clone and data live: never `.env`, `scenarios/` or `results/`;
 - of the environment, only Ouroboros's settings and its providers' keys (`OUROBOROS_*`,
   `OPENROUTER_*`, `GIGACHAT_*` and the like): never convy's gateway key;
-- its own process namespace, which dies with the conversation, or with convy if convy is
-  killed, so no server outlives its conversation.
+- its own process and IPC namespaces, which die with the conversation, or with convy if convy
+  is killed, so no server outlives its conversation.
 
-The network stays open for the model's API, so a scenario that asks for `curl | bash` can
-still download and run a script; inside the sandbox it can only write to its own server's folder
-and read what the server itself holds, such as its model key. `Server(..., sandbox=False)` runs
-without the sandbox, on Linux without bubblewrap for example: then Ouroboros acts on this machine
-with your user's rights.
+What it does not keep apart: the network, open for the model's API, so a scenario that asks for
+`curl | bash` can still download and run a script, and every service listening on this
+machine's `127.0.0.1` is in reach, other conversations' servers and the gpt2giga proxy among
+them; and `.servers/`, which servers running at once share, so one can read or change
+another's data. `Server(..., sandbox=False)` runs without the sandbox, on Linux without
+bubblewrap for example: then Ouroboros acts on this machine with your user's rights.
 
 ## Profiles
 
@@ -163,7 +165,7 @@ Secret) and its scope: `GIGACHAT_API_PERS` for a personal account, `GIGACHAT_API
 uv tool install git+https://github.com/deyna256/gpt2giga@3cfbfb42  # gpt2giga in ~/.local/bin
 mkdir -p ~/.config/gpt2giga && cd ~/.config/gpt2giga
 curl -fsSO https://gu-st.ru/content/lending/russian_trusted_root_ca_pem.crt
-install -m 600 /dev/null .env
+install -m 600 /dev/null .env                          # empties an .env already there
 cat > .env <<CONF
 GIGACHAT_CREDENTIALS=
 GIGACHAT_SCOPE=GIGACHAT_API_PERS
@@ -200,12 +202,14 @@ OUROBOROS_MODEL_FALLBACKS=openai-compatible::GigaChat-2-Max
 
 Then `uv run convy run ouroboros_mid -k 1 --scenarios shower-estimate` is a short real run.
 
-**When it fails.** A client sees the proxy's `500 Internal server error`; the cause is in
+**When it fails.** A client sees GigaChat's status (401, 422, 429) or, for anything else, the
+proxy's `500 Internal server error`; the cause is in
 `~/.config/gpt2giga/gpt2giga.log`:
 
 | in the log or the answer | cause | fix |
 |---|---|---|
 | `gpt2giga: command not found` | `~/.local/bin` is not on `PATH` | `uv tool update-shell`, then a new shell |
+| `env file does not exist` | `--env-path` names a missing file | check the path |
 | `Port 8090 is already in use` | a proxy already runs | stop it, or change the port in both `.env` files |
 | `Can't decode 'Authorization' header` | not the authorization key, or cut short | paste the whole key again |
 | `429 Too Many Requests` | GigaChat's rate limit, often after failed logins | wait a minute |
@@ -234,11 +238,12 @@ convy is killed. The folder a killed launch leaves in `.servers/` is swept by th
 
 ## Changes to Ouroboros
 
-The submodule's branch `convy` changes three things in Ouroboros 7.8.0:
+The submodule's branch `convy` changes four things in Ouroboros 7.8.0:
 
 1. `llm_round` events carry `reasoning_tokens` and `reasoning_text`, the readable reasoning a
    provider returned, even when the round also had visible text.
 2. A task's cost fields (`GET /api/tasks/<id>`) carry the ledger's `cached_tokens`,
-   `cache_write_tokens` and `reasoning_tokens`.
+   `cache_write_tokens` and `reasoning_tokens`, each unknown unless every call reported it.
 3. Parallel tool calls a gateway streams at the same index stay apart instead of merging into
    one refused call (`read_filerun_command`).
+4. The one-time import of an old usage journal no longer hangs on its own lock.

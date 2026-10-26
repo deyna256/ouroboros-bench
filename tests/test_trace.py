@@ -8,7 +8,7 @@ import msgspec
 import pytest
 from convy import Call, NotReported, NoUsage, Reported, Thought, Usage
 
-from ouroboros_convy.trace import Counts, Ledger, Row, Trace
+from ouroboros_convy.trace import Counts, Ledger, Row, Trace, same
 
 ROWS = json.loads((pathlib.Path(__file__).parent / "fixtures" / "turn_events.json").read_text())
 ROOT = "18bb3252"
@@ -111,10 +111,20 @@ def test_a_reasoning_the_round_keeps_cut_is_one_thought_in_full():
 
 def test_a_task_that_goes_on_after_a_question_shows_only_its_new_rows():
     rows = sorted((msgspec.convert(row, Row) for row in ROWS), key=lambda row: row.ts)
-    shown: dict = {}
-    asked = Trace.after(rows[:3], frozenset(), shown)  # what the task wrote before it asked
-    answered = Trace.after(rows, frozenset({ROOT}), shown)  # its whole tree, replayed again
+    asked = Trace.after(rows[:3], frozenset(), {})  # what the task wrote before it asked
+    answered = Trace.after(rows, frozenset({ROOT}), asked.latest())  # its tree, replayed again
     assert asked.rows + answered.rows == tuple(rows)
+
+
+def test_a_row_two_replayed_trees_share_is_kept_once():
+    rows = [msgspec.convert(row, Row) for row in ROWS]
+    assert Trace.after(rows + rows, frozenset({ROOT}), {}).rows == tuple(rows)
+
+
+def test_a_cut_reasoning_matches_even_with_the_cut_mark_in_both_halves():
+    words = "".join(f"step {n}.\n...\n" for n in range(600))
+    assert same(words[:2000] + "\n...\n" + words[-2000:], words)
+    assert not same(words[:2000] + "\n...\n" + "something else", words)
 
 
 def test_a_ledger_read_again_counts_only_what_was_spent_since():

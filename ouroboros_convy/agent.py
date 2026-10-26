@@ -278,9 +278,9 @@ class Chat:
         self.question = turn.question
         asking = {turn.question.task_id} if turn.question and turn.question.task_id else set()
         trace = await self.trace(frozenset(turn.roots | asking))
-        return Answer(
-            turn.text(), await self.usage(frozenset(turn.ended) | trace.tasks()), trace.steps()
-        )
+        usage = await self.usage(frozenset(turn.ended) | trace.tasks())
+        self.shown |= trace.latest()  # only once the answer is whole: a failed one shows nothing
+        return Answer(turn.text(), usage, trace.steps())
 
     def frame(self, raw: Any) -> Frame | None:
         """A frame of the kinds a turn reads, or None for any other; a broken socket raises."""
@@ -310,14 +310,14 @@ class Chat:
         """The tokens of every task the turn ran, its helpers included, by their usage ledgers,
         less what an earlier answer already counted. A task the server does not know never
         ran, so spent nothing."""
-        ledgers = []
+        read: dict[str, Ledger] = {}
         for task in sorted(tasks):
             response = await self.http.get(f"/api/tasks/{task}")
             if response.status_code != 404:
-                ledger = msgspec.convert(response.raise_for_status().json(), Ledger)
-                ledgers.append(ledger.since(self.spent.get(task)))
-                self.spent[task] = ledger
-        return Counts(tuple(ledgers)).usage()
+                read[task] = msgspec.convert(response.raise_for_status().json(), Ledger)
+        spent = tuple(ledger.since(self.spent.get(task)) for task, ledger in read.items())
+        self.spent |= read
+        return Counts(spent).usage()
 
 
 class Ouroboros(Struct, frozen=True):

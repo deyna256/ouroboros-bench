@@ -132,12 +132,21 @@ class Trace(Struct, frozen=True):
     def after(
         cls, rows: Iterable[Row], roots: frozenset[str], shown: dict[str, datetime]
     ) -> "Trace":
-        """The rows each task wrote after the last of its rows an earlier answer `shown`, which
-        then moves on to these: a task that asked a question goes on in the next answer."""
-        new = tuple(row for row in rows if row.task_id not in shown or row.ts > shown[row.task_id])
-        for row in new:
-            shown[row.task_id] = max(row.ts, shown.get(row.task_id, row.ts))
-        return cls(new, roots)
+        """The rows each task wrote after the last of its rows an earlier answer `shown`: a task
+        that asked a question goes on in the next answer. A row two replayed trees share, a
+        helper's in its root's and its own, is kept once."""
+        kept: dict[tuple[str, str, datetime], Row] = {}
+        for row in rows:
+            if row.task_id not in shown or row.ts > shown[row.task_id]:
+                kept.setdefault((type(row).__name__, row.task_id, row.ts), row)
+        return cls(tuple(kept.values()), roots)
+
+    def latest(self) -> dict[str, datetime]:
+        """Each task's last row here, for the next answer's `after`."""
+        last: dict[str, datetime] = {}
+        for row in self.rows:
+            last[row.task_id] = max(row.ts, last.get(row.task_id, row.ts))
+        return last
 
     def steps(self) -> tuple[Thought | Call, ...]:
         """What the agent thought and called, in order of time."""
@@ -208,7 +217,11 @@ def same(thought: str, text: str) -> bool:
     """Whether a round's reasoning, perhaps cut to its head and tail, is this narration's."""
     if thought == text:
         return True
-    return len(text) > len(thought) and any(
-        sep and text.startswith(head) and text.endswith(tail)
-        for head, sep, tail in (thought.partition(CUT), thought.rpartition(CUT))
-    )
+    if len(text) <= len(thought):
+        return False
+    cut = thought.find(CUT)
+    while cut != -1:  # the reasoning may hold the marker itself: try each place
+        if text.startswith(thought[:cut]) and text.endswith(thought[cut + len(CUT) :]):
+            return True
+        cut = thought.find(CUT, cut + 1)
+    return False
