@@ -16,7 +16,7 @@ bubblewrap (`bwrap`); uv fetches the Pythons both environments need.
 ```sh
 git clone https://github.com/deyna256/ouroboros-bench && cd ouroboros-bench
 just setup                 # the Ouroboros submodule and both environments
-cp .env.example .env       # convy's models, then Ouroboros's models and key
+cp .env.example .env       # keys and models; the tests and smoke below need none of them
 just test                  # tests that need no server
 just test-live             # real servers with a scripted model: free, one to two minutes
 just smoke                 # the same through convy
@@ -27,7 +27,7 @@ Then a real run, for example one scenario on the `min` profile, then all of them
 ```sh
 uv run convy run ouroboros_min -k 1 --scenarios "seating-puzzle"
 uv run convy run ouroboros_min ouroboros_max -k 3      # or: just bench 3
-uv run convy compare <run-of-min> <run-of-max>
+uv run convy compare <run-of-min> <run-of-max>       # run ids: results/<agent>/
 ```
 
 ## Layout
@@ -91,7 +91,7 @@ Ten conversations that need nothing done on the machine, each testing one thing:
 
 Each server, with every command its tools run, sees:
 
-- the system read-only, a private `/tmp` and an empty home in memory;
+- the system read-only, a private `/tmp` and an empty home in memory, with uv's Pythons;
 - of the bench, only the Ouroboros checkout and `ouroboros_convy/`, read-only, and
   `.servers/`, where its clone and data live: never `.env`, `scenarios/` or `results/`;
 - of the environment, only Ouroboros's settings and its providers' keys (`OUROBOROS_*`,
@@ -115,7 +115,7 @@ with your user's rights.
 
 All of them run in the `light` runtime mode, so Ouroboros cannot rewrite itself during a run,
 with three workers per server. An agent's `version` is the submodule's commit, the profile, the
-models and a hash of `ouroboros_convy/`, so a run says which build it measured and
+main and light models and a hash of `ouroboros_convy/`, so a run says which build it measured and
 `convy resume` refuses to mix two.
 
 ## Models
@@ -124,22 +124,25 @@ models and a hash of `ouroboros_convy/`, so a run says which build it measured a
   A model's name says its provider: `google/gemini-3.8-flash` goes to OpenRouter,
   `openai-compatible::<name>` to `OPENAI_COMPATIBLE_BASE_URL`, `anthropic::<name>` and the like
   to that provider's API with its own key.
-- **convy's**, the simulated user and the judge, are named in `models.py` and reached through
+- **convy's**, the simulated user and the judge, are named in `models.py`
+  (`openai/gpt-5.6-luna`; change it if `GW_BASE_URL` serves other names) and reached through
   `GW_BASE_URL`. Ouroboros never sees them or their key.
 
 To move Ouroboros to another provider, set every slot that does not follow `OUROBOROS_MODEL`
-on its own, or the server calls OpenRouter's defaults behind it:
+on its own, or the server calls OpenRouter's defaults behind it (with a key for a single
+provider and no gateway, that provider's):
 
-| setting | when empty |
+| setting | when unset |
 |---|---|
 | `OUROBOROS_MODEL` | OpenRouter's `google/gemini-3.8-flash` |
 | `OUROBOROS_MODEL_LIGHT`: helpers, naming, safety checks | OpenRouter's `openai/gpt-6-luna` |
 | `OUROBOROS_MODEL_FALLBACKS`: the models a failed call is retried on | OpenRouter's `openai/gpt-5.6-luna` |
-| `OUROBOROS_MODEL_HEAVY`, `_VISION`, `_CONSCIOUSNESS`, `_SAFETY` | the main or the light model |
-| `OUROBOROS_WEBSEARCH_MODEL`: the `web_search` tool | OpenAI's `gpt-5.2`, with `OPENAI_API_KEY` |
+| `OUROBOROS_MODEL_VISION`, `_CONSCIOUSNESS` | the main model |
+| `OUROBOROS_MODEL_SAFETY` | the light model |
+| `OUROBOROS_WEBSEARCH_MODEL`: the `web_search` tool | `gpt-5.2` on OpenAI or OpenRouter, Claude on Anthropic, else DuckDuckGo |
 
 A fallback equal to the main model is no fallback, so one model in all three runs on exactly
-one. Without `OPENAI_API_KEY`, `web_search` fails; no scenario needs it.
+one. Set but blank, Light follows the main model and Fallbacks are none.
 
 ## GigaChat
 
@@ -150,7 +153,7 @@ schema of Ouroboros's that GigaChat refuses with 422. The proxy, outside the san
 GigaChat key and the Russian root CA:
 
 ```sh
-uv tool install git+https://github.com/deyna256/gpt2giga
+uv tool install git+https://github.com/deyna256/gpt2giga@b401dcf2
 mkdir -p ~/.config/gpt2giga && cd ~/.config/gpt2giga
 curl -fsSO https://gu-st.ru/content/lending/russian_trusted_root_ca_pem.crt
 install -m 600 /dev/null .env
@@ -163,10 +166,10 @@ GPT2GIGA_HOST=127.0.0.1
 GPT2GIGA_PORT=8090
 GPT2GIGA_DISABLE_REASONING=True
 CONF
-gpt2giga --env-path ~/.config/gpt2giga/.env
+gpt2giga --env-path ~/.config/gpt2giga/.env    # keep it running, in a terminal of its own
 ```
 
-Then in `.env`:
+Put your key and home in place of the `<...>` first. Then in the bench's `.env`:
 
 ```sh
 OPENAI_COMPATIBLE_BASE_URL=http://127.0.0.1:8090/v1
