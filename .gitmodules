@@ -1,4 +1,4 @@
 [submodule "ouroboros"]
 	path = ouroboros
-	url = git@github.com:deyna256/ouroboros.git
+	url = https://github.com/deyna256/ouroboros.git
 	branch = convy

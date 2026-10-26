@@ -10,7 +10,11 @@ Ouroboros's tools run real commands, so each server runs in a
 
 ## Setup
 
+Needs Linux with [uv](https://docs.astral.sh/uv/), [just](https://just.systems), git and
+bubblewrap (`bwrap`); uv fetches the Pythons both environments need.
+
 ```sh
+git clone https://github.com/deyna256/ouroboros-bench && cd ouroboros-bench
 just setup                 # the Ouroboros submodule and both environments
 cp .env.example .env       # convy's models, then Ouroboros's models and key
 just test                  # tests that need no server
