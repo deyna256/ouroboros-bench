@@ -78,6 +78,7 @@ def test_the_sandbox_shows_ouroboros_neither_home_nor_scenarios_nor_keys(
         "print([p.exists() for p in paths], 'GW_API_KEY' in os.environ)"
     )
     hidden = [pathlib.Path.home() / ".ssh", BENCH / ".env", BENCH / "scenarios", BENCH / "results"]
+    hidden += [pathlib.Path("/run/docker.sock"), pathlib.Path("/run/user")]
     shown = [CHECKOUT / "server.py", SERVERS]
     environment = server.environment()
     seen = subprocess.run(

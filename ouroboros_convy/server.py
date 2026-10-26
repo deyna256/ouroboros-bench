@@ -139,16 +139,22 @@ class Server(Struct, frozen=True):
             pathlib.Path(git),  # a submodule's history lives in the bench's .git/modules
             HERE,
         ]  # not the whole bench: its scenarios, results and .env stay out of the agent's reach
+        resolver = pathlib.Path(os.path.realpath("/etc/resolv.conf"))
+        if resolver.is_relative_to("/run"):  # systemd-resolved keeps it under the hidden /run
+            shown.append(resolver.parent)
         alternates = pathlib.Path(git) / "objects" / "info" / "alternates"
         if alternates.exists():  # objects borrowed from another clone, as --reference leaves
             shown += [pathlib.Path(line) for line in alternates.read_text().split() if line]
         return [
             bwrap,
             *("--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp"),
+            # Sockets in /run (Docker's, the session bus, the user's agents) take commands
+            # however read-only the bind, so the sandbox sees none of them.
+            *("--tmpfs", "/run"),
             *("--tmpfs", str(pathlib.Path.home()), "--tmpfs", str(BENCH)),  # wherever it lives
             *(arg for path in shown for arg in ("--ro-bind", str(path), str(path))),
             *("--bind", str(SERVERS), str(SERVERS)),
-            *("--unshare-pid", "--die-with-parent", "--new-session"),
+            *("--unshare-pid", "--unshare-ipc", "--die-with-parent", "--new-session"),
         ]
 
     def version(self) -> str:
