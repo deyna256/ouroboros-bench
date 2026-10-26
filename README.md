@@ -288,7 +288,7 @@ convy is killed. The folder a killed launch leaves in `.servers/` is swept by th
 
 ## Changes to Ouroboros
 
-The submodule's branch `convy` changes four things in Ouroboros 7.8.0:
+The submodule's branch `convy` changes five things in Ouroboros 7.8.0:
 
 1. `llm_round` events carry `reasoning_tokens` and `reasoning_text`, the readable reasoning a
    provider returned, even when the round also had visible text.
@@ -297,3 +297,6 @@ The submodule's branch `convy` changes four things in Ouroboros 7.8.0:
 3. Parallel tool calls a gateway streams at the same index stay apart instead of merging into
    one refused call (`read_filerun_command`).
 4. The one-time import of an old usage journal no longer hangs on its own lock.
+5. A call to a skill's tool by the short name its skill's text uses (`vault_code`) is answered
+   with the tool's full name (`ext_13_r_house-vault_vault_code`), not only with the built-in
+   tools.
