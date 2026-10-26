@@ -93,8 +93,9 @@ Each server, with every command its tools run, sees:
 
 - the system read-only; in memory, a private `/tmp`, an empty home (with uv's Pythons) and an
   empty `/run`, so none of the host's sockets there: Docker's, the session bus, the agents;
-- of the bench, only the Ouroboros checkout and `ouroboros_convy/`, read-only, and
-  `.servers/`, where its clone and data live: never `.env`, `scenarios/` or `results/`;
+- of the bench, only the Ouroboros checkout, `ouroboros_convy/` and the agent's skills folder,
+  read-only, and `.servers/`, where its clone and data live: never `.env`, `scenarios/` or
+  `results/`;
 - of the environment, only Ouroboros's settings and its providers' keys (`OUROBOROS_*`,
   `OPENROUTER_*`, `GIGACHAT_*` and the like): never convy's gateway key;
 - its own process and IPC namespaces, which die with the conversation, or with convy if convy
@@ -117,8 +118,57 @@ bubblewrap for example: then Ouroboros acts on this machine with your user's rig
 
 All of them run in the `light` runtime mode, so Ouroboros cannot rewrite itself during a run,
 with three workers per server. An agent's `version` is the submodule's commit, the profile, the
-main and light models and a hash of `ouroboros_convy/`, so a run says which build it measured and
-`convy resume` refuses to mix two.
+main and light models and a hash of `ouroboros_convy/` and of its skills, so a run says which build
+it measured and `convy resume` refuses to mix two.
+
+## Skills
+
+A [skill](ouroboros/docs/CREATING_SKILLS.md) adds to what Ouroboros knows or can do: a folder
+with a `SKILL.md` (YAML frontmatter, then Markdown) or a `skill.json`, of one of three types:
+
+| type | what it ships | what the model gets |
+|---|---|---|
+| `instruction` | `SKILL.md`, maybe helper files | the body, read when the work matches its `when_to_use`, or in every context with `always_in_context: true` (up to 16 KB, paid on every call) |
+| `script` | scripts under `scripts/` | the `skill_exec` tool to run them |
+| `extension` | a `plugin.py` on Ouroboros's `PluginAPI` | the tools, routes and widgets it registers |
+
+```markdown
+---
+name: house-greeting
+description: How every answer in this house begins
+version: 0.1.0
+type: instruction
+always_in_context: true
+when_to_use: Every answer.
+---
+
+Begin every answer with the word "Ahoy".
+```
+
+In Ouroboros a skill runs only once it is installed, reviewed (by its review models, paid, or
+skipped by the owner) and turned on. A bench server starts with none: it reads no skill hub and
+installs no starter skills, so a run does not change with what a hub offers on the day. An agent
+names a folder of skills, from the bench root, and every one of its servers turns each of them
+on before the conversation, as their owner would: it skips the review of the skill's exact
+bytes (the deterministic preflight still runs), grants the keys and permissions its manifest
+asks for and turns it on. A skill that will not turn on fails the conversation's start.
+
+```python
+# agents/ouroboros_mid_skills.py
+from ouroboros_convy import Ouroboros, Server
+
+server = Server("mid", skills="skills")  # skills/<name>/SKILL.md, one folder each
+agent = Ouroboros(server)
+version = server.version()
+```
+
+```sh
+uv run convy run ouroboros_mid ouroboros_mid_skills -k 3    # the same scenarios, without and with
+```
+
+The skills are read in place, read-only in the sandbox, and their files are part of the agent's
+`version`: an edited skill is another build. A skill's declared packages install when it turns
+on, from the network, into the server's own data.
 
 ## Models
 

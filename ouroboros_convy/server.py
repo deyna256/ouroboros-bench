@@ -42,16 +42,26 @@ class Server(Struct, frozen=True):
     With `sandbox`, the default, the server runs in a bubblewrap sandbox: Ouroboros's tools run
     real commands, and there they see the system read-only, an empty home and a private /tmp.
     Of the bench they see only the Ouroboros checkout and this package, read-only, and
-    `.servers/`. The network stays open for the model's API. The sandbox's processes die with
-    it, so none outlives a conversation."""
+    `.servers/`, and `skills` when given. The network stays open for the model's API. The
+    sandbox's processes die with it, so none outlives a conversation.
+
+    `skills` names a folder of skills (`<name>/SKILL.md` or `skill.json` each) that every server
+    reads in place and turns on before the conversation, as their owner would (see `launch.py`).
+    """
 
     profile: str
     stub: bool = False
     sandbox: bool = True
+    skills: str | None = None  # a folder of skills, from the bench root; each one is turned on
 
     def __post_init__(self) -> None:
         if self.profile not in ("min", "mid", "max"):
             raise ValueError(f"profile must be min, mid or max, got {self.profile!r}")
+        if self.skills is not None and not self.skill_folder().is_dir():
+            raise ValueError(f"no skills folder at {self.skill_folder()}")
+
+    def skill_folder(self) -> pathlib.Path | None:
+        return (BENCH / self.skills).resolve() if self.skills is not None else None
 
     @asynccontextmanager
     async def started(self) -> AsyncIterator[str]:
@@ -69,6 +79,7 @@ class Server(Struct, frozen=True):
                 str(CHECKOUT),
                 self.profile,
                 *(["--stub"] if self.stub else []),
+                *(["--skills", str(self.skill_folder())] if self.skills is not None else []),
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=errors,
@@ -138,6 +149,7 @@ class Server(Struct, frozen=True):
             CHECKOUT,
             pathlib.Path(git),  # a submodule's history lives in the bench's .git/modules
             HERE,
+            *([self.skill_folder()] if self.skills is not None else []),
         ]  # not the whole bench: its scenarios, results and .env stay out of the agent's reach
         resolver = pathlib.Path(os.path.realpath("/etc/resolv.conf"))
         if resolver.is_relative_to("/run"):  # systemd-resolved keeps it under the hidden /run
@@ -158,8 +170,8 @@ class Server(Struct, frozen=True):
         ]
 
     def version(self) -> str:
-        """The build a run measures: the checkout's commit, the profile, the models and this
-        package's code, so `convy resume` refuses to mix two of them in one run."""
+        """The build a run measures: the checkout's commit, the profile, the models, this
+        package's code and the skills, so `convy resume` refuses to mix two of them in one run."""
         commit = subprocess.run(
             ["git", "-C", str(CHECKOUT), "rev-parse", "--short", "HEAD"],
             check=True,
@@ -176,4 +188,7 @@ class Server(Struct, frozen=True):
             )
         )
         code = hashlib.sha256(b"".join(path.read_bytes() for path in sorted(HERE.glob("*.py"))))
+        if (skills := self.skill_folder()) is not None:  # a skill's file names matter, as its bytes
+            for path in sorted(path for path in skills.rglob("*") if path.is_file()):
+                code.update(f"{path.relative_to(skills)}\0".encode() + path.read_bytes())
         return f"{commit}-{self.profile}-{models}-{code.hexdigest()[:8]}"

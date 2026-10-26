@@ -7,6 +7,7 @@ import asyncio
 import pathlib
 import subprocess
 
+import httpx2
 import pytest
 from convy import Call, Message, Thought, Usage
 
@@ -52,6 +53,17 @@ async def test_a_conversation_answers_with_steps_and_tokens(clean):
     assert len(tools) == 1 and "BIBLE.md" in tools[0].received.text
     assert Thought("still working") in first.steps
     assert any(isinstance(step, Call) and step.name.startswith("model ") for step in second.steps)
+
+
+async def test_a_server_starts_with_its_skills_turned_on(clean):
+    async with (
+        Server("min", stub=True, skills="tests/fixtures/skills").started() as url,
+        httpx2.AsyncClient(base_url=url, timeout=60) as http,
+    ):
+        skills = (await http.get("/api/extensions")).json()["skills"]
+    assert [(skill["name"], skill["enabled"], skill["executable_review"]) for skill in skills] == [
+        ("house-greeting", True, True)
+    ]
 
 
 async def test_a_conversation_cancelled_while_its_server_starts(clean):
