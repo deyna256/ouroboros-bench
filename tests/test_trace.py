@@ -94,3 +94,31 @@ def test_counts_refuse_parts_that_cannot_be_parts():
     assert usage == Usage(
         10, 5, thinking=NotReported(), cache_read=NotReported(), cache_write=NotReported()
     )
+
+
+def test_a_reasoning_the_round_keeps_cut_is_one_thought_in_full():
+    words = "".join(f"step {n} of the plan. " for n in range(400))  # over Ouroboros's 4000
+    reasoning = {
+        **ROUND,
+        "ts": "2026-10-25T17:19:22.753000+00:00",
+        "reasoning_text": words[:2000] + "\n...\n" + words[-2000:],
+    }
+    narration = next(row for row in ROWS if row["type"] == "send_message")
+    said = {**narration, "ts": "2026-10-25T17:19:22.754000+00:00", "text": f"💬 {words}"}
+    thoughts = [step for step in trace(reasoning, said).steps() if isinstance(step, Thought)]
+    assert sorted(thought.text for thought in thoughts) == sorted([words.strip(), "still working"])
+
+
+def test_a_task_that_goes_on_after_a_question_shows_only_its_new_rows():
+    rows = sorted((msgspec.convert(row, Row) for row in ROWS), key=lambda row: row.ts)
+    shown: dict = {}
+    asked = Trace.after(rows[:3], frozenset(), shown)  # what the task wrote before it asked
+    answered = Trace.after(rows, frozenset({ROOT}), shown)  # its whole tree, replayed again
+    assert asked.rows + answered.rows == tuple(rows)
+
+
+def test_a_ledger_read_again_counts_only_what_was_spent_since():
+    before = Ledger(100, 10, 60, None, 2)
+    now = Ledger(250, 15, 160, None, 2)
+    assert now.since(before) == Ledger(150, 5, 100, None, 0)
+    assert now.since(None) == now

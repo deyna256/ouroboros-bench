@@ -6,6 +6,7 @@ import contextlib
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import datetime
 from typing import Any
 
 import httpx2
@@ -225,6 +226,9 @@ class Chat:
         self.socket = socket
         self.frames: asyncio.Queue[Any] = asyncio.Queue()
         self.question: QuizFrame | None = None
+        # A task that asks a question spans two answers: each gets its own share of the task.
+        self.spent: dict[str, Ledger] = {}  # each task's ledger as the last answer read it
+        self.shown: dict[str, datetime] = {}  # each task's last row the last answer showed
 
     async def listen(self) -> None:
         try:
@@ -272,7 +276,8 @@ class Chat:
             if (frame := self.frame(raw)) is not None:
                 turn.read(frame, loop.time())
         self.question = turn.question
-        trace = await self.trace(frozenset(turn.roots))
+        asking = {turn.question.task_id} if turn.question and turn.question.task_id else set()
+        trace = await self.trace(frozenset(turn.roots | asking))
         return Answer(
             turn.text(), await self.usage(frozenset(turn.ended) | trace.tasks()), trace.steps()
         )
@@ -299,16 +304,19 @@ class Chat:
                             # rows of other kinds or unknown shapes are skipped
                             with contextlib.suppress(msgspec.ValidationError):
                                 rows.append(msgspec.convert(data, Row))
-        return Trace(tuple(rows), roots)
+        return Trace.after(rows, roots, self.shown)
 
     async def usage(self, tasks: frozenset[str]) -> Usage | NoUsage:
-        """The tokens of every task the turn ran, its helpers included, by their usage ledgers.
-        A task the server does not know never ran, so spent nothing."""
+        """The tokens of every task the turn ran, its helpers included, by their usage ledgers,
+        less what an earlier answer already counted. A task the server does not know never
+        ran, so spent nothing."""
         ledgers = []
         for task in sorted(tasks):
             response = await self.http.get(f"/api/tasks/{task}")
             if response.status_code != 404:
-                ledgers.append(msgspec.convert(response.raise_for_status().json(), Ledger))
+                ledger = msgspec.convert(response.raise_for_status().json(), Ledger)
+                ledgers.append(ledger.since(self.spent.get(task)))
+                self.spent[task] = ledger
         return Counts(tuple(ledgers)).usage()
 
 

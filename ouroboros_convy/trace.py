@@ -5,6 +5,7 @@
 are turned into these types where they enter; the rest are skipped.
 """
 
+from collections.abc import Iterable
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -78,6 +79,16 @@ class Ledger(Struct, frozen=True):
     cache_write_tokens: int | None = None
     reasoning_tokens: int | None = None
 
+    def since(self, before: "Ledger | None") -> "Ledger":
+        """What the task spent after `before`, an earlier read of the same ledger."""
+        if before is None:
+            return self
+        fields = {}
+        for name in self.__struct_fields__:
+            now, then = getattr(self, name), getattr(before, name)
+            fields[name] = None if now is None or then is None else now - then
+        return Ledger(**fields)
+
 
 class Counts(Struct, frozen=True):
     """Token counters summed over model calls or tasks: a part stays unknown unless every one
@@ -117,16 +128,35 @@ class Trace(Struct, frozen=True):
     rows: tuple[Row, ...]
     roots: frozenset[str]
 
+    @classmethod
+    def after(
+        cls, rows: Iterable[Row], roots: frozenset[str], shown: dict[str, datetime]
+    ) -> "Trace":
+        """The rows each task wrote after the last of its rows an earlier answer `shown`, which
+        then moves on to these: a task that asked a question goes on in the next answer."""
+        new = tuple(row for row in rows if row.task_id not in shown or row.ts > shown[row.task_id])
+        for row in new:
+            shown[row.task_id] = max(row.ts, shown.get(row.task_id, row.ts))
+        return cls(new, roots)
+
     def steps(self) -> tuple[Thought | Call, ...]:
         """What the agent thought and called, in order of time."""
         starts: dict[str, ToolStart] = {}
         reasoned: set[str] = set()
+        narrated: list[str] = []
         for row in self.rows:
             match row:
                 case ToolStart(invocation_id=str(invocation)) if invocation:
                     starts[invocation] = row
                 case Round(thought=str(thought)) if thought:
                     reasoned.add(thought)
+                case Narration(narration=True):
+                    narrated.append(row.text.removeprefix(NARRATION_MARK).strip())
+        # A wordless round narrates its reasoning too, in full where the round keeps it cut.
+        whole = {
+            thought: next((text for text in narrated if same(thought, text)), thought)
+            for thought in reasoned
+        }
         timed: list[tuple[datetime, Thought | Call]] = []
         for row in self.rows:
             match row:
@@ -134,7 +164,7 @@ class Trace(Struct, frozen=True):
                     seconds = (row.duration_ms or 0) / 1000
                     started = row.ts - timedelta(seconds=seconds)
                     if row.thought:
-                        timed.append((started, Thought(row.thought)))
+                        timed.append((started, Thought(whole[row.thought])))
                     call = Call(
                         name=self.named(f"model {row.model}", row.task_id),
                         started=started,
@@ -158,7 +188,7 @@ class Trace(Struct, frozen=True):
                     timed.append((started, call))
                 case Narration(narration=True):
                     text = row.text.removeprefix(NARRATION_MARK).strip()
-                    if text and text not in reasoned:  # a wordless round narrates its reasoning
+                    if text and not any(same(thought, text) for thought in reasoned):
                         timed.append((row.ts, Thought(text)))
         timed.sort(key=lambda pair: pair[0])
         return tuple(step for _, step in timed)
@@ -169,3 +199,16 @@ class Trace(Struct, frozen=True):
 
     def named(self, name: str, task_id: str) -> str:
         return name if task_id in self.roots else f"{name} (helper {task_id})"
+
+
+CUT = "\n...\n"  # what Ouroboros puts between the head and the tail of a reasoning it cuts
+
+
+def same(thought: str, text: str) -> bool:
+    """Whether a round's reasoning, perhaps cut to its head and tail, is this narration's."""
+    if thought == text:
+        return True
+    return len(text) > len(thought) and any(
+        sep and text.startswith(head) and text.endswith(tail)
+        for head, sep, tail in (thought.partition(CUT), thought.rpartition(CUT))
+    )
