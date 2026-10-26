@@ -63,7 +63,13 @@ async def test_a_conversation_cancelled_while_its_server_starts(clean):
         await asyncio.wait_for(open_one(), 8)  # the server takes about twenty seconds to be ready
 
 
-def test_the_sandbox_shows_ouroboros_neither_home_nor_scenarios_nor_keys(monkeypatch):
+@pytest.mark.parametrize("elsewhere", [False, True], ids=["bench-in-home", "bench-out-of-home"])
+def test_the_sandbox_shows_ouroboros_neither_home_nor_scenarios_nor_keys(
+    monkeypatch, tmp_path, elsewhere
+):
+    if elsewhere:  # the bench outside the hidden home
+        monkeypatch.setenv("HOME", str(tmp_path))
+        (tmp_path / ".ssh").mkdir()
     monkeypatch.setenv("GW_API_KEY", "convy-gateway-key")
     server = Server("min")
     python = CHECKOUT / ".venv" / "bin" / "python"

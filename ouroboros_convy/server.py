@@ -145,7 +145,7 @@ class Server(Struct, frozen=True):
         return [
             bwrap,
             *("--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp"),
-            *("--tmpfs", str(pathlib.Path.home())),
+            *("--tmpfs", str(pathlib.Path.home()), "--tmpfs", str(BENCH)),  # wherever it lives
             *(arg for path in shown for arg in ("--ro-bind", str(path), str(path))),
             *("--bind", str(SERVERS), str(SERVERS)),
             *("--unshare-pid", "--die-with-parent", "--new-session"),
