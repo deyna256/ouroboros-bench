@@ -114,20 +114,85 @@ with three workers per server. The models come from `.env`. An agent's `version`
 submodule's commit, the profile, the models and a hash of `ouroboros_convy/`, so a run says
 which build it measured and `convy resume` refuses to mix two.
 
-## GigaChat
+## Models
 
-Run [gpt2giga](https://github.com/ai-forever/gpt2giga) on this machine and point Ouroboros, and
-convy's user and judge if you like, at it as an OpenAI-compatible gateway (`.env.example`): the
-bench needs no GigaChat settings of its own. The proxy keeps the GigaChat key and the Russian
-root CA (`GIGACHAT_CREDENTIALS`, `GIGACHAT_CA_BUNDLE_FILE` in its own configuration), outside the
-sandbox, which shares the machine's network and reaches it at `localhost:8090`.
+Two sets of models, set apart:
+
+- **Ouroboros's**, the ones under test, come from `.env` (or the environment, which wins) and
+  reach each server: `OUROBOROS_MODEL` and the key of its provider. A model's name says its
+  provider: `google/gemini-3.8-flash` goes to OpenRouter, `openai-compatible::<name>` to
+  `OPENAI_COMPATIBLE_BASE_URL`, and `anthropic::`, `openai::`, `gigachat::`, `cloudru::`,
+  `deepseek::`, `minimax::` and `zai::` to those providers' own APIs with their own keys.
+- **convy's**, the simulated user and the judge, are named in `models.py` and reached through
+  `GW_BASE_URL`. Ouroboros never sees them or their key.
+
+To move Ouroboros to another provider, set every slot that does not follow `OUROBOROS_MODEL`
+on its own, or the server calls OpenRouter's defaults behind it:
+
+| setting | when empty |
+|---|---|
+| `OUROBOROS_MODEL` | OpenRouter's `google/gemini-3.8-flash` |
+| `OUROBOROS_MODEL_LIGHT`: helpers, naming, safety checks | OpenRouter's `openai/gpt-6-luna` |
+| `OUROBOROS_MODEL_FALLBACKS`: the models a failed call is retried on | OpenRouter's `openai/gpt-5.6-luna` |
+| `OUROBOROS_MODEL_HEAVY`, `_VISION`, `_CONSCIOUSNESS`, `_SAFETY` | the main or the light model |
+| `OUROBOROS_WEBSEARCH_MODEL`: the `web_search` tool | OpenAI's `gpt-5.2`, with `OPENAI_API_KEY` |
+
+A fallback equal to the main model is no fallback, so one model in all three is the way to run
+on exactly one. Without a key for OpenAI, `web_search` fails and Ouroboros has to do without; no
+scenario here needs it.
+
+The models are part of an agent's `version`, so a run on another model is another build:
+`convy resume` will not continue a run on it, and `convy compare` sets the two side by side.
+`.env` holds one set; to measure another, run again with it in the environment:
 
 ```sh
-uv tool install gpt2giga
-GIGACHAT_CREDENTIALS=... GIGACHAT_SCOPE=GIGACHAT_API_PERS \
-GIGACHAT_CA_BUNDLE_FILE=russian_trusted_root_ca.pem GIGACHAT_TIMEOUT=300 \
-GPT2GIGA_DISABLE_REASONING=True gpt2giga
+OUROBOROS_MODEL=... OUROBOROS_MODEL_LIGHT=... OUROBOROS_MODEL_FALLBACKS=... \
+    uv run convy run ouroboros_mid -k 1
 ```
+
+## GigaChat
+
+GigaChat is reached through [gpt2giga](https://github.com/ai-forever/gpt2giga), a proxy on this
+machine that speaks OpenAI's API, as an OpenAI-compatible gateway. Use
+[the fork](https://github.com/deyna256/gpt2giga): gpt2giga 0.3.0 with one change, which counts
+GigaChat's cached input tokens as input (see below). Upstream 0.3.0 undercounts them; upstream
+0.3.1a1 counts them right but passes Ouroboros's tool schemas to GigaChat unchanged, and
+GigaChat refuses one of them with 422 (`...checkpoint_ref.properties is missing`), so Ouroboros
+cannot run on it at all.
+
+The proxy keeps the GigaChat key and the Russian root CA, outside the sandbox; the sandbox
+shares the machine's network and reaches it at `localhost:8090`. Its configuration goes in a
+file of its own, readable by you alone:
+
+```sh
+uv tool install git+https://github.com/deyna256/gpt2giga
+mkdir -p ~/.config/gpt2giga && cd ~/.config/gpt2giga
+curl -fsSO https://gu-st.ru/content/lending/russian_trusted_root_ca_pem.crt
+install -m 600 /dev/null .env
+cat >> .env <<'CONF'
+GIGACHAT_CREDENTIALS=<the authorization key from developers.sber.ru>
+GIGACHAT_SCOPE=GIGACHAT_API_PERS
+GIGACHAT_CA_BUNDLE_FILE=/home/<you>/.config/gpt2giga/russian_trusted_root_ca_pem.crt
+GIGACHAT_TIMEOUT=300
+GPT2GIGA_HOST=127.0.0.1
+GPT2GIGA_PORT=8090
+GPT2GIGA_DISABLE_REASONING=True
+CONF
+gpt2giga --env-path ~/.config/gpt2giga/.env
+```
+
+Then in `.env` (or for one run, in the environment):
+
+```sh
+OPENAI_COMPATIBLE_BASE_URL=http://127.0.0.1:8090/v1
+OPENAI_COMPATIBLE_API_KEY=unused
+OUROBOROS_MODEL=openai-compatible::GigaChat-2-Max
+OUROBOROS_MODEL_LIGHT=openai-compatible::GigaChat-2-Max
+OUROBOROS_MODEL_FALLBACKS=openai-compatible::GigaChat-2-Max
+```
+
+convy's user and judge can stay where they are, or go to GigaChat too: `GW_BASE_URL` at the
+proxy and GigaChat's model names in `models.py`.
 
 Checked against GigaChat's API directly, with its own SDK, and its
 [documentation](https://developers.sber.ru/docs/ru/gigachat/guides/counting-tokens):
@@ -136,16 +201,16 @@ Checked against GigaChat's API directly, with its own SDK, and its
   together; GigaChat-2-Max answers that with 500, and GigaChat-3-Ultra writes its tool calls as
   text inside its reasoning instead of calling them. Without tools both models reason. So the
   profiles differ in context only.
-- `GIGACHAT_TIMEOUT=300`: the SDK's default of 30 seconds cuts GigaChat-3-Ultra off, and the
-  proxy reports that as a 500.
-- Set `OUROBOROS_MODEL_FALLBACKS` to a GigaChat model too, or a failed call falls back to
-  Ouroboros's default fallback on OpenRouter.
-- Input tokens read low on cache hits. GigaChat's `prompt_tokens` excludes the cached tokens it
-  reports as `precached_prompt_tokens`, and gpt2giga passes both on unchanged, where OpenAI's
-  API counts the cached tokens in the input. convy then shows the uncached part as the input
-  and the cache as not reported. gpt2giga also reports `reasoning_tokens` as 0 always.
+- GigaChat-2-Max is the model to use. GigaChat-3-Ultra answered at times, and at times streamed
+  nothing but repeated reasoning until its token limit, about five minutes, with no answer.
+- `GIGACHAT_TIMEOUT=300`: the SDK's default of 30 seconds cuts long answers off, and the proxy
+  reports that as a 500.
+- Tokens: GigaChat's `prompt_tokens` leaves out the cached input it reports as
+  `precached_prompt_tokens`, where OpenAI's API counts it in. The fork adds it back, so the
+  input stays whole and the cached part shows as cache read. `reasoning_tokens` is always 0,
+  and the cache write is not reported.
 - A personal key is rate-limited, and GigaChat reports no prices, so `OUROBOROS_BUDGET_USD`
-  limits nothing.
+  limits nothing. The `mid` profile sends about 90,000 input tokens a call.
 
 ## Memory
 
