@@ -149,27 +149,46 @@ one. Set but blank, Light follows the main model and Fallbacks are none.
 GigaChat is reached through [gpt2giga](https://github.com/ai-forever/gpt2giga), a local proxy
 that speaks OpenAI's API, in [the fork](https://github.com/deyna256/gpt2giga): 0.3.0 that counts
 cached input tokens as input. Upstream 0.3.0 undercounts them, and 0.3.1a1 passes on a tool
-schema of Ouroboros's that GigaChat refuses with 422. The proxy, outside the sandbox, holds the
-GigaChat key and the Russian root CA:
+schema of Ouroboros's that GigaChat refuses with 422. The proxy runs outside the sandbox and
+holds the GigaChat key and the Russian root CA, which GigaChat's certificates are signed with.
+
+**1. The key.** At [developers.sber.ru](https://developers.sber.ru/studio), in your GigaChat API
+project, take the *authorization key* (a base64 string, not the Client ID or the Client
+Secret) and its scope: `GIGACHAT_API_PERS` for a personal account, `GIGACHAT_API_B2B` or
+`GIGACHAT_API_CORP` for a company's.
+
+**2. Install and configure.** The configuration is a file readable by you alone:
 
 ```sh
-uv tool install git+https://github.com/deyna256/gpt2giga@b401dcf2
+uv tool install git+https://github.com/deyna256/gpt2giga@3cfbfb42  # gpt2giga in ~/.local/bin
 mkdir -p ~/.config/gpt2giga && cd ~/.config/gpt2giga
 curl -fsSO https://gu-st.ru/content/lending/russian_trusted_root_ca_pem.crt
 install -m 600 /dev/null .env
-cat >> .env <<'CONF'
-GIGACHAT_CREDENTIALS=<the authorization key from developers.sber.ru>
+cat > .env <<CONF
+GIGACHAT_CREDENTIALS=
 GIGACHAT_SCOPE=GIGACHAT_API_PERS
-GIGACHAT_CA_BUNDLE_FILE=/home/<you>/.config/gpt2giga/russian_trusted_root_ca_pem.crt
+GIGACHAT_CA_BUNDLE_FILE=$HOME/.config/gpt2giga/russian_trusted_root_ca_pem.crt
 GIGACHAT_TIMEOUT=300
 GPT2GIGA_HOST=127.0.0.1
 GPT2GIGA_PORT=8090
 GPT2GIGA_DISABLE_REASONING=True
 CONF
-gpt2giga --env-path ~/.config/gpt2giga/.env    # keep it running, in a terminal of its own
 ```
 
-Put your key and home in place of the `<...>` first. Then in the bench's `.env`:
+Then paste the key after `GIGACHAT_CREDENTIALS=` in an editor, which keeps it out of the shell's
+history, and change the scope if yours differs.
+
+**3. Run and check.** The proxy has to run while the bench does:
+
+```sh
+cd ~/.config/gpt2giga
+nohup gpt2giga --env-path .env > gpt2giga.log 2>&1 & echo $! > gpt2giga.pid
+curl -s http://127.0.0.1:8090/v1/models      # lists GigaChat-2-Max: the key and the CA work
+kill "$(cat ~/.config/gpt2giga/gpt2giga.pid)"  # to stop it
+```
+
+**4. The bench.** In the bench's `.env`; all three slots, or Ouroboros calls OpenRouter for the
+others:
 
 ```sh
 OPENAI_COMPATIBLE_BASE_URL=http://127.0.0.1:8090/v1
@@ -179,10 +198,28 @@ OUROBOROS_MODEL_LIGHT=openai-compatible::GigaChat-2-Max
 OUROBOROS_MODEL_FALLBACKS=openai-compatible::GigaChat-2-Max
 ```
 
-- `GPT2GIGA_DISABLE_REASONING=True`: with tools and `reasoning_effort` together GigaChat-2-Max
-  answers 500, and GigaChat-3-Ultra writes its tool calls as text. So the profiles differ in
-  context only.
-- `GIGACHAT_TIMEOUT=300`: the default of 30 seconds cuts long answers off with a 500.
+Then `uv run convy run ouroboros_mid -k 1 --scenarios shower-estimate` is a short real run.
+
+**When it fails.** A client sees the proxy's `500 Internal server error`; the cause is in
+`~/.config/gpt2giga/gpt2giga.log`:
+
+| in the log or the answer | cause | fix |
+|---|---|---|
+| `gpt2giga: command not found` | `~/.local/bin` is not on `PATH` | `uv tool update-shell`, then a new shell |
+| `Port 8090 is already in use` | a proxy already runs | stop it, or change the port in both `.env` files |
+| `Can't decode 'Authorization' header` | not the authorization key, or cut short | paste the whole key again |
+| `429 Too Many Requests` | GigaChat's rate limit, often after failed logins | wait a minute |
+| `FileNotFoundError` | `GIGACHAT_CA_BUNDLE_FILE` names a missing file | fix the path |
+| `CERTIFICATE_VERIFY_FAILED` | no CA set | set `GIGACHAT_CA_BUNDLE_FILE` |
+| a 500 on every request with tools | reasoning left on | `GPT2GIGA_DISABLE_REASONING=True` |
+| a 500 after 30 seconds | the SDK's default timeout | `GIGACHAT_TIMEOUT=300` |
+| a 422 about `checkpoint_ref.properties` | upstream gpt2giga 0.3.1 or later | install the fork as above |
+| Ouroboros: `Missing credentials` | a slot left on OpenRouter | set all three slots |
+
+What else to know:
+
+- Without reasoning the profiles differ in context only: with tools and `reasoning_effort`
+  together GigaChat-2-Max answers 500, and GigaChat-3-Ultra writes its tool calls as text.
 - GigaChat-2-Max, not GigaChat-3-Ultra: Ultra at times repeats its reasoning until its token
   limit, about five minutes, and gives no answer.
 - Thinking tokens are always 0 and cache writes are not reported. GigaChat reports no prices,
